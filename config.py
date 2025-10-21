@@ -10,7 +10,7 @@ load_dotenv()
 
 # Bot Token - Get from @BotFather on Telegram
 # Make sure to put your new revoked token here!
-BOT_TOKEN = "YOUR_NEW_BOT_TOKEN_HERE" 
+BOT_TOKEN = "8180268399:AAEfEsmFMvrCsgfxMb5Q0kbPqajrTJbpD38" 
 
 # --- FIX 3: Added Bot Username ---
 BOT_USERNAME = "Mafia_Gang_Game_Bot" # Change this if your bot's username is different
