@@ -9,10 +9,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Bot Token - Get from @BotFather on Telegram
-BOT_TOKEN = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8180268399:AAEfEsmFMvrCsgfxMb5Q0kbPqajrTJbpD38')
 
 # Admin user IDs (can manage bot, kick players, etc.)
-ADMIN_IDS = [int(id_str) for id_str in os.getenv('ADMIN_IDS', '').split(',') if id_str]
+ADMIN_IDS = [int(id_str) for id_str in os.getenv('6837532865', '').split(',') if id_str]
 
 # Game Settings
 GAME_SETTINGS = {
