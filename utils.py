@@ -6,13 +6,13 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from config import EMOJIS, LOADING_FRAMES, ANIMATION_SEQUENCES, SHOP_ITEMS
+from config import EMOJIS, LOADING_FRAMES, ANIMATION_SEQUENCES, SHOP_ITEMS, BOT_USERNAME
 
 logger = logging.getLogger(__name__)
 
 # --- INLINE KEYBOARD FUNCTIONS ---
 
-def create_main_menu_keyboard() -> InlineKeyboardMarkup:
+def create_main_menu_keyboard(is_private: bool = False) -> InlineKeyboardMarkup:
     """Creates the main menu inline keyboard."""
     keyboard = [
         [
@@ -28,14 +28,23 @@ def create_main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("❓ Help", callback_data='menu_help')
         ]
     ]
+    
+    # --- FIX 3: Add "Create Gang" button ---
+    if is_private:
+        keyboard.append([
+            InlineKeyboardButton("➕ LET'S CREATE GANG ➕", url=f"https://t.me/{BOT_USERNAME}?startgroup=true")
+        ])
+        
     return InlineKeyboardMarkup(keyboard)
 
-def create_game_mode_keyboard() -> InlineKeyboardMarkup:
+def create_play_menu_keyboard() -> InlineKeyboardMarkup:
     """Creates the game mode selection inline keyboard."""
+    # --- FIX 2: Updated play menu text ---
     keyboard = [
         [InlineKeyboardButton("⚔️ 5v5 Classic", callback_data='mode_5v5')],
         [InlineKeyboardButton("🎯 1v1 Duel", callback_data='mode_1v1')],
-        [InlineKeyboardButton("🚀 Missions (Single Player)", callback_data='mode_missions')],
+        [InlineKeyboardButton("🚀 New Missions!", callback_data='menu_missions')],
+        [InlineKeyboardButton("🌟 Events (Coming Soon)", callback_data="none")],
         [InlineKeyboardButton("🔙 Back to Menu", callback_data='menu_main')]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -47,12 +56,10 @@ def create_shop_keyboard(player_items: list) -> InlineKeyboardMarkup:
     
     for item in SHOP_ITEMS:
         if item['id'] not in player_item_ids:
-            # Player doesn't own it, show buy button
             btn_text = f"💰 Buy: {item['name']} ({item['price']})"
             callback = f"buy_item_{item['id']}"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
         else:
-            # Player owns it
             keyboard.append([InlineKeyboardButton(f"✅ {item['name']} (Owned)", callback_data="none")])
         
     keyboard.append([InlineKeyboardButton("🔙 Back to Menu", callback_data='menu_main')])
@@ -63,25 +70,19 @@ def create_lobby_keyboard(game_id: str, is_creator: bool = False) -> InlineKeybo
     keyboard = [
         [InlineKeyboardButton("✅ Join Game", callback_data=f"join_game_{game_id}")]
     ]
-    
     if is_creator:
-        keyboard.append(
-            [InlineKeyboardButton("🚀 Start Game", callback_data=f"start_game_{game_id}")]
-        )
-    
-    keyboard.append(
-        [InlineKeyboardButton("❌ Cancel Game", callback_data=f"cancel_game_{game_id}")]
-    )
+        keyboard.append([InlineKeyboardButton("🚀 Start Game", callback_data=f"start_game_{game_id}")])
+    keyboard.append([InlineKeyboardButton("❌ Cancel Game", callback_data=f"cancel_game_{game_id}")])
     return InlineKeyboardMarkup(keyboard)
 
 def create_missions_menu_keyboard() -> InlineKeyboardMarkup:
     """Creates the missions menu inline keyboard."""
     keyboard = [
-        [InlineKeyboardButton("🎯 Target Practice", callback_data='mission_target')],
-        [InlineKeyboardButton("🔍 Detective's Case", callback_data='mission_case')],
-        [InlineKeyboardButton("💉 Doctor's Dilemma", callback_data='mission_dilemma')],
-        [InlineKeyboardButton("💣 Timed Disarm", callback_data='mission_disarm')],
-        [InlineKeyboardButton("💰 Mafia Heist", callback_data='mission_heist')],
+        [InlineKeyboardButton("🎯 Target Practice", callback_data='mission_target_practice')],
+        [InlineKeyboardButton("🔍 Detective's Case", callback_data='mission_detectives_case')],
+        [InlineKeyboardButton("💉 Doctor's Dilemma", callback_data='mission_doctors_dilemma')],
+        [InlineKeyboardButton("💣 Timed Disarm", callback_data='mission_timed_disarm')],
+        [InlineKeyboardButton("💰 Mafia Heist", callback_data='mission_mafia_heist')],
         [InlineKeyboardButton("🔙 Back to Play Menu", callback_data='menu_play')]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -107,12 +108,7 @@ def create_voting_keyboard(players: list) -> ReplyKeyboardMarkup:
 def create_player_action_keyboard(action: str, players: list) -> ReplyKeyboardMarkup:
     """Create keyboard for player actions (kill, investigate, protect) (REPLY KEYBOARD)"""
     keyboard = []
-    
-    action_emoji = {
-        'kill': '🔪',
-        'investigate': '🔍',
-        'protect': '💉'
-    }
+    action_emoji = {'kill': '🔪', 'investigate': '🔍', 'protect': '💉'}
     emoji = action_emoji.get(action, '⚡')
     
     row = []
@@ -128,22 +124,26 @@ def create_player_action_keyboard(action: str, players: list) -> ReplyKeyboardMa
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
-# --- FORMATTING AND ANIMATION FUNCTIONS (Unchanged) ---
+# --- FORMATTING AND ANIMATION FUNCTIONS ---
 
 def format_player_stats(player: dict) -> str:
     if not player:
         return "❌ Player not found!"
     
     win_rate = (player['wins'] / player['games_played'] * 100) if player['games_played'] > 0 else 0
-    rank = get_rank_title(player['level'])
-    next_level_xp = calculate_xp_for_level(player['level'] + 1)
+    
+    # --- FIX 4: Fixed 'level not defined' bug ---
+    level = player['level']
+    rank = get_rank_title(level)
+    
+    next_level_xp = calculate_xp_for_level(level + 1)
     xp_progress = (player['xp'] / next_level_xp) * 100 if next_level_xp > 0 else 0
     progress_bar = create_progress_bar(xp_progress)
     
     text = (
         f"👤 <b>{player['username']}</b>\n\n"
         f"🎖️ Rank: <b>{rank}</b>\n"
-        f"⭐ Level: <b>{player['level']}</b>\n"
+        f"⭐ Level: <b>{level}</b>\n"
         f"💎 XP: {player['xp']}/{next_level_xp}\n"
         f"{progress_bar}\n\n"
         f"🪙 Coins: <b>{player['coins']}</b>\n"
@@ -208,23 +208,7 @@ def generate_game_id() -> str:
     return f"G-{random_str}{timestamp}"
 
 
-def check_game_end_condition(game: dict) -> tuple:
-    from roles import RoleManager # Local import to avoid circular dependency
-    role_manager = RoleManager()
-    
-    alive_players = [p for p in game['players'] if p['alive']]
-    
-    mafia_alive = sum(1 for p in alive_players if role_manager.get_role_team(p['role']) == 'mafia')
-    villagers_alive = sum(1 for p in alive_players if role_manager.get_role_team(p['role']) == 'villagers')
-    
-    # --- REMOVED 1vBOSS LOGIC ---
-    
-    if mafia_alive == 0:
-        return True, 'villagers'
-    elif mafia_alive >= villagers_alive:
-        return True, 'mafia'
-    
-    return False, None
+# --- FIX 4: Moved check_game_end_condition to game_manager.py ---
 
 
 def get_role_emoji(role: str) -> str:
@@ -271,9 +255,7 @@ def get_rank_title(level: int) -> str:
     else: return "🏆 Legend"
 
 def format_vote_results(game: dict, vote_counts: dict) -> str:
-    """Format voting results"""
     text = "📊 <b>VOTING RESULTS</b>\n\n"
-    
     if not vote_counts:
         text += "No votes were cast!\n"
         return text
