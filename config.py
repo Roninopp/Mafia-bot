@@ -10,7 +10,12 @@ load_dotenv()
 
 # Bot Token - Get from @BotFather on Telegram
 # Make sure to put your new revoked token here!
-BOT_TOKEN = "8180268399:AAEfEsmFMvrCsgfxMb5Q0kbPqajrTJbpD38" 
+BOT_TOKEN = "YOUR_NEW_BOT_TOKEN_HERE" 
+
+# --- FIX 3: Added Bot Username and Pic ---
+BOT_USERNAME = "Mafia_Gang_Game_Bot" # Change this if your bot's username is different
+MAFIA_PIC_URL = "https://i.imgur.com/83wwv5G.jpeg"
+
 
 # Admin user IDs (can manage bot, kick players, etc.)
 ADMIN_IDS = [6837532865]
@@ -43,7 +48,7 @@ GAME_SETTINGS = {
     }
 }
 
-# --- NEW: Rewards for Single Player Missions ---
+# Rewards for Single Player Missions
 MISSION_REWARDS = {
     'target_practice': {
         'xp': 50,
