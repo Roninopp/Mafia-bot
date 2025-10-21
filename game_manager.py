@@ -1,6 +1,18 @@
 """
 Game Manager - Complete Implementation with Fixed Issues
 """
+# ... other imports ...
+from player_manager import PlayerManager
+from missions import MissionManager
+from roles import RoleManager
+# --- Ensure this line correctly imports the instance ---
+from enhanced_features import replay_system
+# ----------------------------------------------------
+from utils import (
+    ReplyKeyboardRemove, create_player_action_keyboard,
+    # ... other utils imports ...
+)
+# ... rest of the file ...
 
 import random
 import asyncio
