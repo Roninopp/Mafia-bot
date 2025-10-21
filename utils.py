@@ -1,0 +1,664 @@
+"""
+Utility Functions for Mafia RPG Bot
+"""
+
+import asyncio
+import logging
+from datetime import datetime, timedelta
+# --- FIX: Added ReplyKeyboardRemove ---
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from config import EMOJIS, LOADING_FRAMES, ANIMATION_SEQUENCES, SHOP_ITEMS
+
+# --- ADDED LOGGER ---
+logger = logging.getLogger(__name__)
+
+# --- FUNCTIONS MOVED FROM mafia_bot_main.py ---
+
+def create_main_menu_keyboard() -> ReplyKeyboardMarkup:
+    """Creates the main menu keyboard."""
+    keyboard = [
+        # --- FIX 3: Changed "Play Game" to "Play" ---
+        ["🎮 Play", "👤 My Profile"],
+        ["🏆 Leaderboard", "🎁 Daily Reward"],
+        ["🏪 Shop", "❓ Help"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def create_game_mode_keyboard() -> ReplyKeyboardMarkup:
+    """Creates the game mode selection keyboard."""
+    keyboard = [
+        ["⚔️ 5v5 Classic"],
+        ["🎯 1v1 Duel"],
+        ["👑 1vBoss Mission"],
+        ["🔙 Back to Menu"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+# --- FIX 2: Added shop keyboard function ---
+def create_shop_keyboard(player_items: list) -> ReplyKeyboardMarkup:
+    """Creates the shop keyboard."""
+    keyboard = []
+    player_item_ids = [item['id'] for item in player_items]
+    
+    row = []
+    for item in SHOP_ITEMS:
+        if item['id'] not in player_item_ids:
+            # Player doesn't own it, show buy button
+            btn_text = f"💰 Buy: {item['name']} ({item['price']})"
+            row.append(KeyboardButton(btn_text))
+        else:
+            # Player owns it
+            row.append(KeyboardButton(f"✅ {item['name']} (Owned)"))
+        
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    
+    if row:
+        keyboard.append(row)
+        
+    keyboard.append([KeyboardButton("🔙 Back to Menu")])
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+# -------------------------------------------------
+
+
+def format_player_stats(player: dict) -> str:
+    """Format player statistics for display"""
+    if not player:
+        return "❌ Player not found!"
+    
+    win_rate = (player['wins'] / player['games_played'] * 100) if player['games_played'] > 0 else 0
+    
+    # Calculate rank
+    rank = get_rank_title(player['level'])
+    
+    # Next level XP requirement
+    next_level_xp = calculate_xp_for_level(player['level'] + 1)
+    xp_progress = (player['xp'] / next_level_xp) * 100 if next_level_xp > 0 else 0
+    
+    # Progress bar
+    progress_bar = create_progress_bar(xp_progress)
+    
+    text = (
+        f"👤 <b>{player['username']}</b>\n\n"
+        f"🎖️ Rank: <b>{rank}</b>\n"
+        f"⭐ Level: <b>{level}</b>\n"
+        f"💎 XP: {player['xp']}/{next_level_xp}\n"
+        f"{progress_bar}\n\n"
+        f"🪙 Coins: <b>{player['coins']}</b>\n"
+        f"🎮 Games Played: <b>{player['games_played']}</b>\n"
+        f"🏆 Wins: <b>{player['wins']}</b>\n"
+        f"💔 Losses: <b>{player['losses']}</b>\n"
+        f"📊 Win Rate: <b>{win_rate:.1f}%</b>\n"
+    )
+    
+    if player.get('favorite_role'):
+        text += f"🎭 Favorite Role: <b>{player['favorite_role'].upper()}</b>\n"
+    
+    if player.get('streak', 0) > 0:
+        text += f"🔥 Daily Streak: <b>{player['streak']} days</b>\n"
+    
+    if player.get('achievements'):
+        text += f"\n🏅 Achievements: <b>{len(player['achievements'])}</b>"
+    
+    return text
+
+
+def create_progress_bar(percentage: float, length: int = 10) -> str:
+    """Create a visual progress bar"""
+    filled = int((percentage / 100) * length)
+    empty = length - filled
+    
+    bar = "▰" * filled + "▱" * empty
+    return f"[{bar}] {percentage:.0f}%"
+
+
+def calculate_xp_for_level(level: int) -> int:
+    """Calculate XP required for a specific level"""
+    return int(100 * (level ** 1.5))
+
+
+def format_time_remaining(seconds: int) -> str:
+    """Format seconds into readable time"""
+    if seconds >= 60:
+        minutes = seconds // 60
+        secs = seconds % 60
+        return f"{minutes}m {secs}s"
+    return f"{seconds}s"
+
+
+def create_game_keyboard(game_id: str, is_creator: bool = False) -> InlineKeyboardMarkup:
+    """Create game lobby keyboard (INLINE - NOT USED BY MAIN BOT)"""
+    keyboard = [
+        [InlineKeyboardButton("✅ Join Game", callback_data=f"join_{game_id}")]
+    ]
+    
+    if is_creator:
+        keyboard.append([
+            InlineKeyboardButton("🚀 Start Game", callback_data=f"start_{game_id}"),
+            InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{game_id}")
+        ])
+    
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def send_animated_message(message, frames: list, delay: float = 1.0):
+    """Send animated message with multiple frames"""
+    sent_message = None
+    try:
+        for i, frame_text in enumerate(frames):
+            if i == 0:
+                sent_message = await message.reply_text(frame_text, parse_mode='HTML')
+            else:
+                await asyncio.sleep(delay)
+                if sent_message:
+                    await sent_message.edit_text(frame_text, parse_mode='HTML')
+        
+        return sent_message
+    except Exception as e:
+        logger.warning(f"Animation failed: {e}")
+        return sent_message
+
+
+async def send_loading_animation(message, final_text: str):
+    """Send loading animation"""
+    loading_text = "⏳ Loading"
+    
+    try:
+        for frame in LOADING_FRAMES:
+            await message.edit_text(f"{loading_text} {frame}", parse_mode='HTML')
+            await asyncio.sleep(0.3)
+        
+        await message.edit_text(final_text, parse_mode='HTML')
+    except Exception as e:
+        logger.warning(f"Loading animation failed: {e}")
+        await message.edit_text(final_text, parse_mode='HTML')
+
+
+def format_game_summary(game: dict) -> str:
+    """Format game summary"""
+    alive_count = sum(1 for p in game['players'] if p['alive'])
+    dead_count = len(game['players']) - alive_count
+    
+    text = (
+        f"🎮 <b>GAME STATUS</b>\n\n"
+        f"🆔 Game ID: <code>{game['id']}</code>\n"
+        f"🎯 Mode: <b>{game['mode'].upper()}</b>\n"
+        f"🔄 Round: <b>{game['round']}</b>\n"
+        f"🌓 Phase: <b>{game['phase'].upper()}</b>\n\n"
+        f"👥 Players:\n"
+        f"   ✅ Alive: {alive_count}\n"
+        f"   💀 Dead: {dead_count}\n\n"
+    )
+    
+    return text
+
+
+def format_role_list(game: dict, show_roles: bool = False) -> str:
+    """Format list of players with optional roles"""
+    text = "<b>Players:</b>\n"
+    
+    for i, player in enumerate(game['players'], 1):
+        status = "✅" if player['alive'] else "💀"
+        role_text = f" ({player['role'].upper()})" if show_roles and not player['alive'] else ""
+        text += f"{i}. {status} {player['username']}{role_text}\n"
+    
+    return text
+
+
+def get_role_emoji(role: str) -> str:
+    """Get emoji for role"""
+    return EMOJIS['roles'].get(role, '❓')
+
+
+def get_action_emoji(action: str) -> str:
+    """Get emoji for action"""
+    return EMOJIS['actions'].get(action, '⚡')
+
+
+def get_phase_emoji(phase: str) -> str:
+    """Get emoji for game phase"""
+    return EMOJIS['phases'].get(phase, '🎮')
+
+
+def format_achievement(achievement: dict) -> str:
+    """Format achievement for display"""
+    text = (
+        f"{achievement.get('icon', '🏆')} <b>{achievement['name']}</b>\n"
+        f"   {achievement['description']}\n"
+    )
+    
+    if 'reward' in achievement:
+        text += f"   💰 Reward: {achievement['reward']} coins\n"
+    
+    return text
+
+
+def format_mission(mission: dict) -> str:
+    """Format mission for display"""
+    status = "✅" if mission.get('completed') else "⏳"
+    
+    text = (
+        f"{status} <b>{mission['name']}</b>\n"
+        f"   {mission['description']}\n"
+        f"   💎 Reward: {mission['reward_xp']} XP, {mission['reward_coins']} coins\n"
+    )
+    
+    return text
+
+
+def calculate_game_rewards(game: dict, player: dict) -> dict:
+    """Calculate rewards for a player based on game results"""
+    base_xp = 100
+    base_coins = 50
+    
+    rewards = {
+        'xp': base_xp,
+        'coins': base_coins,
+        'achievements': []
+    }
+    
+    # Survival bonus
+    if player['alive']:
+        rewards['xp'] += 50
+        rewards['coins'] += 25
+    
+    # Win bonus
+    winner = game.get('winner')
+    if winner:
+        if (winner == 'villagers' and player['role'] != 'mafia') or \
+           (winner == 'mafia' and player['role'] == 'mafia'):
+            rewards['xp'] += 100
+            rewards['coins'] += 50
+    
+    # Role bonus
+    role_bonuses = {
+        'mafia': 10,
+        'detective': 15,
+        'doctor': 10,
+        'boss': 20,
+        'villager': 5
+    }
+    
+    rewards['xp'] += role_bonuses.get(player['role'], 0)
+    
+    # Round bonus
+    rewards['xp'] += game['round'] * 5
+    
+    return rewards
+
+
+def validate_username(username: str) -> bool:
+    """Validate username"""
+    if not username or len(username) < 3:
+        return False
+    if len(username) > 32:
+        return False
+    return True
+
+
+def format_leaderboard_entry(rank: int, player: dict) -> str:
+    """Format single leaderboard entry"""
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    rank_str = medals.get(rank, f"{rank}.")
+    
+    return (
+        f"{rank_str} <b>{player['username']}</b>\n"
+        f"   Level {player['level']} • {player['wins']} wins • {player['xp']} XP\n"
+    )
+
+
+def get_time_until_daily_reset(last_claim: str) -> str:
+    """Calculate time until daily reset"""
+    if not last_claim:
+        return "Available now!"
+    
+    last_claim_date = datetime.fromisoformat(last_claim)
+    next_claim = last_claim_date.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    now = datetime.now()
+    
+    if now >= next_claim:
+        return "Available now!"
+    
+    time_diff = next_claim - now
+    hours = time_diff.seconds // 3600
+    minutes = (time_diff.seconds % 3600) // 60
+    
+    return f"{hours}h {minutes}m"
+
+
+def create_voting_keyboard(players: list) -> ReplyKeyboardMarkup:
+    """Create voting keyboard for day phase (REPLY KEYBOARD)"""
+    keyboard = []
+    
+    # Create rows of 2
+    row = []
+    for player in players:
+        if player['alive']:
+            row.append(KeyboardButton(f"🗳️ Vote: {player['username']}"))
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+    if row: # Add any remaining buttons
+        keyboard.append(row)
+    
+    keyboard.append([KeyboardButton("⏭️ Skip Vote")])
+    
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+
+def format_vote_results(game: dict, vote_counts: dict) -> str:
+    """Format voting results"""
+    text = "📊 <b>VOTING RESULTS</b>\n\n"
+    
+    if not vote_counts:
+        text += "No votes were cast!\n"
+        return text
+    
+    sorted_votes = sorted(vote_counts.items(), key=lambda x: x[1], reverse=True)
+    
+    for user_id, votes in sorted_votes:
+        # Find player name
+        player_name = "Unknown"
+        for player in game['players']:
+            if player['user_id'] == user_id:
+                player_name = player['username']
+                break
+        text += f"• {player_name}: {votes} vote(s)\n"
+    
+    return text
+
+
+def generate_game_id() -> str:
+    """Generate unique game ID"""
+    import random
+    import string
+    
+    timestamp = int(datetime.now().timestamp()) % 100000
+    random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    
+    return f"G-{random_str}{timestamp}"
+
+
+def sanitize_input(text: str) -> str:
+    """Sanitize user input"""
+    # Remove HTML tags
+    import re
+    clean = re.compile('<.*?>')
+    return re.sub(clean, '', text)
+
+
+def format_game_history(player: dict) -> str:
+    """Format player's game history"""
+    text = "📊 <b>GAME HISTORY</b>\n\n"
+    
+    if not player.get('roles_played'):
+        text += "No games played yet!\n"
+        return text
+    
+    text += "<b>Roles Played:</b>\n"
+    for role, count in player['roles_played'].items():
+        emoji = get_role_emoji(role)
+        text += f"{emoji} {role.capitalize()}: {count} time(s)\n"
+    
+    return text
+
+
+async def send_countdown(message, seconds: int, prefix: str = "Starting in"):
+    """Send countdown animation"""
+    try:
+        sent_message = await message.reply_text(f"⏰ <b>{prefix} {seconds}...</b>", parse_mode='HTML')
+        for i in range(seconds - 1, 0, -1):
+            await asyncio.sleep(1)
+            await sent_message.edit_text(
+                f"⏰ <b>{prefix} {i}...</b>",
+                parse_mode='HTML'
+            )
+        await asyncio.sleep(1)
+        return sent_message
+    except Exception as e:
+        logger.warning(f"Countdown failed: {e}")
+        return None
+
+
+def check_game_end_condition(game: dict) -> tuple:
+    """Check if game should end and return winner"""
+    alive_players = [p for p in game['players'] if p['alive']]
+    
+    mafia_alive = sum(1 for p in alive_players if role_manager.get_role_team(p['role']) == 'mafia')
+    villagers_alive = sum(1 for p in alive_players if role_manager.get_role_team(p['role']) == 'villagers')
+    
+    # 1vBoss mode check
+    if game['mode'] == '1vboss':
+        boss_alive = any(p['alive'] and p['role'] == 'boss' for p in alive_players)
+        if not boss_alive:
+            return True, 'villagers' # Villagers win
+        if villagers_alive == 0:
+            return True, 'mafia' # Boss wins
+    
+    # Standard mode check
+    if mafia_alive == 0:
+        return True, 'villagers'
+    elif mafia_alive >= villagers_alive:
+        return True, 'mafia'
+    
+    return False, None
+
+
+def format_error_message(error: str) -> str:
+    """Format error message"""
+    return f"❌ <b>Error:</b> {error}"
+
+
+def format_success_message(message: str) -> str:
+    """Format success message"""
+    return f"✅ <b>Success:</b> {message}"
+
+
+def create_player_action_keyboard(action: str, players: list) -> ReplyKeyboardMarkup:
+    """Create keyboard for player actions (kill, investigate, protect) (REPLY KEYBOARD)"""
+    keyboard = []
+    
+    action_emoji = {
+        'kill': '🔪',
+        'investigate': '🔍',
+        'protect': '💉'
+    }
+    emoji = action_emoji.get(action, '⚡')
+    
+    # Create rows of 2
+    row = []
+    for player in players:
+        if player['alive']:
+            row.append(KeyboardButton(f"{emoji} {player['username']}"))
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+    if row: # Add any remaining buttons
+        keyboard.append(row)
+    
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+
+def format_night_summary(eliminated: dict, protected_info: dict, investigated: dict = None) -> str:
+    """Format night phase summary"""
+    text = "🌙 <b>NIGHT SUMMARY</b> 🌙\n\n"
+    
+    if eliminated:
+        text += f"☠️ {eliminated['username']} was eliminated!\n"
+        text += f"They were a <b>{eliminated['role'].upper()}</b>\n\n"
+    elif protected_info.get('protected'):
+        text += "🛡️ Someone was attacked, but the Doctor saved them!\n\n"
+    else:
+        text += "🌟 A peaceful night. No casualties.\n\n"
+    
+    if investigated:
+        text += f"🔍 Investigation complete (results sent privately)\n"
+    
+    return text
+
+
+def format_day_summary(eliminated: dict, vote_count: int) -> str:
+    """Format day phase summary"""
+    text = "☀️ <b>DAY SUMMARY</b> ☀️\n\n"
+    
+    if eliminated:
+        text += f"⚖️ The town has voted!\n\n"
+        text += f"💀 {eliminated['username']} was eliminated!\n"
+        text += f"They were a <b>{eliminated['role'].upper()}</b>\n"
+        text += f"Votes received: {vote_count}\n"
+    else:
+        text += "🤝 No consensus reached. No one was eliminated.\n"
+    
+    return text
+
+
+def get_rank_title(level: int) -> str:
+    """Get rank title based on level"""
+    if level < 5:
+        return "🌱 Rookie"
+    elif level < 10:
+        return "⚔️ Soldier"
+    elif level < 20:
+        return "🎖️ Warrior"
+    elif level < 30:
+        return "👑 Elite"
+    elif level < 50:
+        return "💎 Master"
+    else:
+        return "🏆 Legend"
+
+
+def calculate_level_from_xp(total_xp: int) -> tuple:
+    """Calculate level and remaining XP from total XP"""
+    level = 1
+    xp = total_xp
+    
+    while True:
+        xp_needed = calculate_xp_for_level(level + 1)
+        if xp_needed == 0: # Avoid division by zero if calc is 0
+            break
+        if xp < xp_needed:
+            break
+        xp -= xp_needed
+        level += 1
+    
+    return level, xp
+
+
+def format_ability_description(ability: dict) -> str:
+    """Format ability description with details"""
+    text = f"⚡ <b>{ability['name']}</b>\n"
+    text += f"{ability['description']}\n\n"
+    
+    if ability.get('cooldown', 0) > 0:
+        text += f"⏰ Cooldown: {ability['cooldown']} rounds\n"
+    
+    if ability.get('uses', -1) > 0:
+        text += f"🔢 Limited uses: {ability['uses']}\n"
+    
+    if ability.get('restriction'):
+        text += f"⚠️ {ability['restriction']}\n"
+    
+    return text
+
+
+def is_game_balanced(players: list) -> tuple:
+    """Check if game teams are balanced"""
+    mafia_count = sum(1 for p in players if p['role'] in ['mafia', 'boss', 'godfather'])
+    villager_count = len(players) - mafia_count
+    
+    # Mafia should be roughly 30-40% of players
+    ideal_ratio = 0.35
+    actual_ratio = mafia_count / len(players) if players else 0
+    
+    balanced = 0.25 <= actual_ratio <= 0.45
+    
+    return balanced, actual_ratio
+
+
+def generate_game_tips(role: str) -> list:
+    """Generate helpful tips for a role"""
+    tips = {
+        'mafia': [
+            "💡 Coordinate with your Mafia team",
+            "💡 Act innocent during the day",
+            "💡 Target power roles first",
+            "💡 Create alibis and stories"
+        ],
+        'detective': [
+            "💡 Investigate suspicious players",
+            "💡 Keep your role secret",
+            "💡 Share info carefully",
+            "💡 Look for behavioral patterns"
+        ],
+        'doctor': [
+            "💡 Protect key players",
+            "💡 Vary your protection",
+            "💡 Try to predict Mafia targets",
+            "💡 Stay hidden from Mafia"
+        ],
+        'villager': [
+            "💡 Observe player behavior",
+            "💡 Vote based on evidence",
+            "💡 Trust confirmed roles",
+            "💡 Discuss strategies with others"
+        ],
+        'boss': [
+            "💡 Use abilities strategically",
+            "💡 Your armor saves you once",
+            "💡 Intimidate wisely",
+            "💡 Lead your team to victory"
+        ]
+    }
+    
+    return tips.get(role, ["💡 Play smart and have fun!"])
+
+# --- ADDED HELPER FUNCTIONS FOR ANIMATIONS (Missing from your file) ---
+
+async def send_role_reveal_animation(context, user_id: int, role: str, description: str):
+    """Sends an animated role reveal to a player."""
+    frames = [
+        "🤫 <b>Assigning your role...</b>",
+        "🎭 <b>You are...</b>",
+        f"<b>{get_role_emoji(role)} {role.upper()} {get_role_emoji(role)}</b>"
+    ]
+    try:
+        msg = await context.bot.send_message(user_id, frames[0], parse_mode='HTML')
+        for frame in frames[1:]:
+            await asyncio.sleep(1.5)
+            await msg.edit_text(frame, parse_mode='HTML')
+        
+        await asyncio.sleep(1)
+        await msg.edit_text(description, parse_mode='HTML')
+    except Exception as e:
+        logger.warning(f"Failed to send role reveal to {user_id}: {e}")
+
+async def send_elimination_animation(message, username: str, role: str):
+    """Sends an animated elimination message."""
+    frames = [
+        "⚖️ <b>The town has made its decision...</b>",
+        f"🚶 <b>{username} steps forward...</b>",
+        f"💀 <b>{username} has been eliminated!</b> 💀\n\nThey were a <b>{role.upper()}</b>!"
+    ]
+    await send_animated_message(message, frames, delay=1.5)
+
+async def send_phase_transition(message, phase: str):
+    """Sends an animated phase transition."""
+    if phase == 'night':
+        frames = ANIMATION_SEQUENCES['night_phase']
+    else:
+        frames = ANIMATION_SEQUENCES['day_phase']
+    await send_animated_message(message, frames, delay=1.2)
+
+async def send_victory_animation(message, winner: str, winners: list):
+    """Sends an animated victory message."""
+    frames = ANIMATION_SEQUENCES['victory']
+    winner_text = f"🏆 <b>THE {winner.upper()} TEAM WINS!</b> 🏆\n\n"
+    winner_text += "<b>Victorious Players:</b>\n"
+    for player in winners:
+        winner_text += f"• {player['username']} ({player['role'].upper()})\n"
+    
+    frames.append(winner_text)
+    await send_animated_message(message, frames, delay=1.5)
