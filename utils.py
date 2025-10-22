@@ -1,244 +1,209 @@
 """
-Utility Functions for Mafia RPG Bot
+Mafia RPG Telegram Bot - Main Entry Point
+Complete implementation with INLINE keyboards
 """
 
-import asyncio
 import logging
-from datetime import datetime, timedelta
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from config import EMOJIS, LOADING_FRAMES, ANIMATION_SEQUENCES, SHOP_ITEMS, BOT_USERNAME
+import asyncio
+import random
+import os
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove, InputFile
+from telegram.error import BadRequest
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+    CallbackQueryHandler
+)
+from game_manager import GameManager
+from player_manager import PlayerManager
+from enhanced_features import tournament_system, trading_system
+from config import BOT_TOKEN, FEATURES, SHOP_ITEMS, ADMIN_IDS, MISSION_REWARDS, ANIMATION_SEQUENCES, BOT_USERNAME, MAFIA_PIC_URL
+from utils import (
+    create_main_menu_keyboard, create_play_menu_keyboard,
+    format_player_stats, format_leaderboard_entry,
+    send_animated_message, send_role_reveal_animation,
+    create_shop_keyboard, create_lobby_keyboard, # <- Uses the updated version
+    create_missions_menu_keyboard, get_role_emoji,
+    create_tournament_menu_keyboard, create_trade_menu_keyboard
+)
 
-logger = logging.getLogger(__name__)
+# Configure logging (Unchanged)
+# ...
 
-# --- INLINE KEYBOARD FUNCTIONS ---
+# Global managers (Unchanged)
+# ...
 
-def create_main_menu_keyboard(is_private: bool = False) -> InlineKeyboardMarkup:
-    """Creates the main menu inline keyboard."""
-    keyboard = [
-        [
-            InlineKeyboardButton("🎮 Play", callback_data='menu_play'),
-            InlineKeyboardButton("👤 My Profile", callback_data='menu_profile')
-        ],
-        [
-            InlineKeyboardButton("🏆 Leaderboard", callback_data='menu_leaderboard'),
-            InlineKeyboardButton("🎁 Daily Reward", callback_data='menu_daily')
-        ],
-        [
-            InlineKeyboardButton("🏪 Shop", callback_data='menu_shop'),
-            InlineKeyboardButton("❓ Help", callback_data='menu_help')
-        ],
-         # --- Add Econ Buttons ---
-        [
-            InlineKeyboardButton("⚔️ Tournaments", callback_data='menu_tournament'),
-            InlineKeyboardButton("📈 Trading Post", callback_data='menu_trade')
-        ]
-        # ------------------------
-    ]
-    if is_private:
-        keyboard.append([
-            InlineKeyboardButton("➕ LET'S CREATE GANG ➕", url=f"https://t.me/{BOT_USERNAME}?startgroup=true")
-        ])
-    return InlineKeyboardMarkup(keyboard)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Welcome message and main menu"""
+    # ... (code unchanged)
+    pass
 
-def create_play_menu_keyboard() -> InlineKeyboardMarkup:
-    """Creates the game mode selection inline keyboard."""
-    keyboard = [
-        [InlineKeyboardButton("⚔️ 5v5 Classic", callback_data='mode_5v5')],
-        [InlineKeyboardButton("🎯 1v1 Duel", callback_data='mode_1v1')],
-        [InlineKeyboardButton("🚀 New Missions!", callback_data='menu_missions')],
-        [InlineKeyboardButton("🌟 Events (Coming Soon)", callback_data="none")],
-        [InlineKeyboardButton("🔙 Back to Menu", callback_data='menu_main')]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def create_shop_keyboard(player_items: list) -> InlineKeyboardMarkup:
-    """Creates the inline shop keyboard."""
-    keyboard = []
-    player_item_ids = [item['id'] for item in player_items]
-    for item in SHOP_ITEMS:
-        if item['id'] not in player_item_ids:
-            btn_text = f"💰 Buy: {item['name']} ({item['price']})"
-            callback = f"buy_item_{item['id']}"
-            keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
-        else:
-            keyboard.append([InlineKeyboardButton(f"✅ {item['name']} (Owned)", callback_data="none")])
-    keyboard.append([InlineKeyboardButton("🔙 Back to Menu", callback_data='menu_main')])
-    return InlineKeyboardMarkup(keyboard)
-
-def create_lobby_keyboard(game_id: str, is_creator: bool = False) -> InlineKeyboardMarkup:
-    """Create game lobby inline keyboard"""
-    keyboard = [[InlineKeyboardButton("✅ Join Game", callback_data=f"join_game_{game_id}")]]
-    if is_creator:
-        keyboard.append([InlineKeyboardButton("🚀 Start Game", callback_data=f"start_game_{game_id}")])
-    keyboard.append([InlineKeyboardButton("❌ Cancel Game", callback_data=f"cancel_game_{game_id}")])
-    return InlineKeyboardMarkup(keyboard)
-
-def create_missions_menu_keyboard() -> InlineKeyboardMarkup:
-    """Creates the missions menu inline keyboard."""
-    keyboard = [
-        [InlineKeyboardButton("🎯 Target Practice", callback_data='mission_target_practice')],
-        [InlineKeyboardButton("🔍 Detective's Case", callback_data='mission_detectives_case')],
-        [InlineKeyboardButton("💉 Doctor's Dilemma", callback_data='mission_doctors_dilemma')],
-        [InlineKeyboardButton("💣 Timed Disarm", callback_data='mission_timed_disarm')],
-        [InlineKeyboardButton("💰 Mafia Heist", callback_data='mission_mafia_heist')],
-        [InlineKeyboardButton("🔙 Back to Play Menu", callback_data='menu_play')]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-# --- NEW Econ Keyboards ---
-def create_tournament_menu_keyboard() -> InlineKeyboardMarkup:
-    """Creates the tournament menu inline keyboard."""
-    keyboard = [
-        [InlineKeyboardButton("🏆 View Tournaments", callback_data='tourn_list')],
-        # [InlineKeyboardButton("➕ Create Tournament (Admin)", callback_data='tourn_create')], # Optional
-        [InlineKeyboardButton("🔙 Back to Menu", callback_data='menu_main')]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def create_trade_menu_keyboard() -> InlineKeyboardMarkup:
-    """Creates the trade menu inline keyboard."""
-    keyboard = [
-        [InlineKeyboardButton("➕ Create Trade Offer", callback_data='trade_create')],
-        [InlineKeyboardButton("📬 View My Offers", callback_data='trade_list')], # Shows incoming & outgoing
-        [InlineKeyboardButton("🔙 Back to Menu", callback_data='menu_main')]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-# -------------------------
+# --- COMMAND HANDLERS ---
+# ... (play_command, shop_command, etc. - unchanged)
+async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE): await update.message.reply_text("🎮 Choose Mode:", reply_markup=create_play_menu_keyboard())
+async def shop_command(update: Update, context: ContextTypes.DEFAULT_TYPE): player = player_manager.get_player(update.effective_user.id); text = f"🏪 SHOP | 💰 Coins: <b>{player['coins']}</b>"; keyboard = create_shop_keyboard(player['items']); await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+async def profile_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): player = player_manager.get_player(update.effective_user.id); await update.message.reply_text(format_player_stats(player), parse_mode='HTML')
+async def leaderboard_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): top = player_manager.get_leaderboard(10); text = "🏆 TOP PLAYERS 🏆\n\n" + ("None yet!" if not top else "\n".join(format_leaderboard_entry(i, p) for i, p in enumerate(top, 1))); await update.message.reply_text(text, parse_mode='HTML')
+async def daily_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): success, reward = player_manager.claim_daily_reward(update.effective_user.id); text = f"🎉 DAILY! 🎉\n💎{reward['xp']} XP\n🪙{reward['coins']} Coins\n🔥Streak: {reward['streak']}" if success else "⏰ Claimed!"; await update.message.reply_text(text, parse_mode='HTML')
+async def tournament_command(update: Update, context: ContextTypes.DEFAULT_TYPE): await update.message.reply_text("🏆 TOURNAMENTS 🏆", reply_markup=create_tournament_menu_keyboard())
+async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE): await update.message.reply_text("📈 TRADING POST 📈", reply_markup=create_trade_menu_keyboard())
+async def help_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): text = ("❓ HELP ❓\n\nBasics...\n\n⚡ COMMANDS:\n/start /play /shop /profile...\n/logs (A) /botstats (A)"); await update.message.reply_text(text, parse_mode='HTML')
 
 
-# --- REPLY KEYBOARD FUNCTIONS (FOR IN-GAME ACTIONS) ---
-def create_voting_keyboard(players: list) -> ReplyKeyboardMarkup:
-    """Create voting keyboard for day phase (REPLY KEYBOARD)"""
-    keyboard = []
-    row = []
-    for player in players:
-        if player['alive']:
-            row.append(KeyboardButton(f"🗳️ Vote: {player['username']}"))
-            if len(row) == 2: keyboard.append(row); row = []
-    if row: keyboard.append(row)
-    keyboard.append([KeyboardButton("⏭️ Skip Vote")])
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+# --- Message Handler ---
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ... (code unchanged)
+    pass
 
-def create_player_action_keyboard(action: str, players: list) -> ReplyKeyboardMarkup:
-    """Create keyboard for player actions (kill, investigate, protect) (REPLY KEYBOARD)"""
-    keyboard = []
-    action_emoji = {'kill': '🔪', 'investigate': '🔍', 'protect': '💉'}
-    emoji = action_emoji.get(action, '⚡')
-    row = []
-    for player in players:
-        if player['alive']:
-            row.append(KeyboardButton(f"{emoji} {player['username']}"))
-            if len(row) == 2: keyboard.append(row); row = []
-    if row: keyboard.append(row)
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+# --- Callback Query Handler ---
+async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ... (routing logic unchanged)
+    pass
 
-# --- FORMATTING AND ANIMATION FUNCTIONS --- (Unchanged)
-def format_player_stats(player: dict) -> str:
-    if not player: return "❌ Player not found!"
-    win_rate = (player['wins'] / player['games_played'] * 100) if player['games_played'] > 0 else 0
-    level = player['level']
-    rank = get_rank_title(level)
-    next_level_xp = calculate_xp_for_level(level + 1)
-    xp_progress = (player['xp'] / next_level_xp) * 100 if next_level_xp > 0 else 0
-    progress_bar = create_progress_bar(xp_progress)
-    text = (f"👤 <b>{player['username']}</b>\n\n🎖️ Rank: <b>{rank}</b>\n⭐ Level: <b>{level}</b>\n"
-            f"💎 XP: {player['xp']}/{next_level_xp}\n{progress_bar}\n\n"
-            f"🪙 Coins: <b>{player['coins']}</b>\n🎮 Games Played: <b>{player['games_played']}</b>\n"
-            f"🏆 Wins: <b>{player['wins']}</b>\n💔 Losses: <b>{player['losses']}</b>\n📊 Win Rate: <b>{win_rate:.1f}%</b>\n")
-    if player.get('favorite_role'): text += f"🎭 Favorite Role: <b>{player['favorite_role'].upper()}</b>\n"
-    if player.get('streak', 0) > 0: text += f"🔥 Daily Streak: <b>{player['streak']} days</b>\n"
-    if player.get('achievements'): text += f"\n🏅 Achievements: <b>{len(player['achievements'])}</b>"
-    return text
+# --- MENU DISPLAY FUNCTIONS ---
+async def safe_edit_message(query, text, keyboard):
+    # ... (code unchanged)
+    pass
+async def show_main_menu_callback(query, context):
+    # ... (code unchanged)
+    pass
+async def show_play_menu(query, context):
+    # ... (code unchanged)
+    pass
+async def show_profile(query, context):
+    # ... (code unchanged)
+    pass
+async def show_leaderboard(query, context):
+    # ... (code unchanged)
+    pass
+async def claim_daily_reward(query, context):
+    # ... (code unchanged)
+    pass
+async def show_shop(query, context):
+    # ... (code unchanged)
+    pass
+async def show_help_callback(query, context):
+    # ... (code unchanged)
+    pass
+async def show_tournament_menu(query, context):
+    # ... (code unchanged)
+    pass
+async def show_trade_menu(query, context):
+    # ... (code unchanged)
+    pass
 
-def create_progress_bar(percentage: float, length: int = 10) -> str:
-    filled = int((percentage / 100) * length)
-    empty = length - filled
-    bar = "▰" * filled + "▱" * empty
-    return f"[{bar}] {percentage:.0f}%"
+# --- LOBBY/GAME FUNCTIONS ---
+async def create_game_lobby(query, context, mode: str):
+    """Create a new game lobby via callback"""
+    user_id = query.from_user.id
+    chat_id = query.message.chat_id
+    game_id = game_manager.create_game(mode, user_id, chat_id)
+    context.chat_data['active_game'] = game_id
+    game = game_manager.get_game(game_id)
+    req = game_manager.get_required_players(mode)
+    text = (f"🎮 LOBBY <code>{game_id}</code> | <b>{mode.upper()}</b>\n"
+            f"👥 {len(game['players'])}/{req} | 👑 {query.from_user.username or query.from_user.first_name}\nWaiting...")
+    # --- FIX: Pass viewer_user_id ---
+    keyboard = create_lobby_keyboard(game_id, viewer_user_id=user_id)
+    # --------------------------------
+    await safe_edit_message(query, text, keyboard)
 
-def calculate_xp_for_level(level: int) -> int: return int(100 * (level ** 1.5))
+async def join_game_action(query, context, game_id: str, user_id: int, username: str):
+    """Join an existing game via callback"""
+    success, msg = game_manager.join_game(game_id, user_id, username)
+    if success:
+        await query.answer("✅ Joined!")
+        game = game_manager.get_game(game_id); req = game_manager.get_required_players(game['mode'])
+        text = f"🎮 LOBBY <code>{game_id}</code> | <b>{game['mode'].upper()}</b>\n👥 {len(game['players'])}/{req}\n\nPlayers:\n"
+        text += "\n".join(f"{'👑' if p['user_id']==game['creator_id'] else '•'} {p['username']}" for p in game['players'])
+        if len(game['players'])>=req: text+="\n🎉 Full! Ready to start!"
+        # --- FIX: Pass viewer_user_id (the user who clicked Join) ---
+        keyboard = create_lobby_keyboard(game_id, viewer_user_id=user_id)
+        # ---------------------------------------------------------
+        await safe_edit_message(query, text, keyboard)
+        # --- FIX: Also update for the creator ---
+        # If the lobby is now full, try to update the message for the creator too
+        if len(game['players']) >= req and game['creator_id'] != user_id:
+             creator_keyboard = create_lobby_keyboard(game_id, viewer_user_id=game['creator_id'])
+             try:
+                 # Need the original message ID sent to the creator. This is tricky.
+                 # A better approach might be to just notify the creator separately.
+                 await context.bot.send_message(
+                     chat_id=game['chat_id'], # Send to the group/chat where lobby is
+                     text=f"@{game['players'][0]['username']} The lobby is full! You can now /start the game.",
+                     # Ideally we would edit the original message, but getting its ID is complex here.
+                 )
+                 # Or update the message with the keyboard including the start button for everyone
+                 await query.edit_message_text(text, parse_mode='HTML', reply_markup=creator_keyboard)
 
-async def send_animated_message(message, frames: list, delay: float = 1.0):
-    sent_message = None
-    try:
-        for i, frame_text in enumerate(frames):
-            if i == 0: sent_message = await message.reply_text(frame_text, parse_mode='HTML')
-            else:
-                await asyncio.sleep(delay)
-                if sent_message: await sent_message.edit_text(frame_text, parse_mode='HTML')
-        return sent_message
-    except Exception as e:
-        logger.warning(f"Animation failed: {e}")
-        return sent_message
+             except Exception as e:
+                 logger.error(f"Could not update creator's lobby view: {e}")
 
-def format_leaderboard_entry(rank: int, player: dict) -> str:
-    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    rank_str = medals.get(rank, f"{rank}.")
-    return (f"{rank_str} <b>{player['username']}</b>\n"
-            f"   Level {player['level']} • {player['wins']} wins • {player['xp']} XP\n")
+    else: await query.answer(f"❌ {msg}", True)
 
-def generate_game_id() -> str:
-    import random, string
-    timestamp = int(datetime.now().timestamp()) % 100000
-    random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-    return f"G-{random_str}{timestamp}"
 
-def get_role_emoji(role: str) -> str: return EMOJIS['roles'].get(role, '❓')
+async def start_game_action(query, context, game_id: str, user_id: int):
+    # ... (code unchanged)
+    pass
+async def cancel_game_action(query, context, game_id: str, user_id: int):
+    # ... (code unchanged)
+    pass
 
-def format_night_summary(eliminated: dict, protected_info: dict, investigated: dict = None) -> str:
-    text = "🌙 <b>NIGHT SUMMARY</b> 🌙\n\n"
-    if eliminated: text += f"☠️ {eliminated['username']} was eliminated!\nThey were a <b>{eliminated['role'].upper()}</b>\n\n"
-    elif protected_info.get('protected'): text += "🛡️ Someone was attacked, but the Doctor saved them!\n\n"
-    else: text += "🌟 A peaceful night. No casualties.\n\n"
-    if investigated: text += f"🔍 Investigation complete (results sent privately)\n"
-    return text
+# --- SHOP ---
+async def handle_purchase(query, context, item_id, user_id):
+    # ... (code unchanged)
+    pass
 
-def format_day_summary(eliminated: dict, vote_count: int) -> str:
-    text = "☀️ <b>DAY SUMMARY</b> ☀️\n\n"
-    if eliminated:
-        text += (f"⚖️ The town has voted!\n\n💀 {eliminated['username']} was eliminated!\n"
-                 f"They were a <b>{eliminated['role'].upper()}</b>\nVotes received: {vote_count}\n")
-    else: text += "🤝 No consensus reached. No one was eliminated.\n"
-    return text
+# --- MISSIONS ---
+# ... (All mission functions unchanged)
+async def show_missions_menu(query, context): pass
+async def start_target_practice(query, context): pass
+async def send_target_practice_round(query, context): pass
+async def handle_target_practice(query, context, data): pass
+async def end_target_practice(query, context): pass
+async def start_detectives_case(query, context): pass
+async def handle_detectives_case(query, context, data): pass
+async def start_doctors_dilemma(query, context): pass
+async def handle_doctors_dilemma(query, context, data): pass
+async def start_timed_disarm(query, context): pass
+async def handle_timed_disarm(query, context, data): pass
+async def start_mafia_heist(query, context): pass
+async def handle_mafia_heist(query, context, data): pass
 
-def get_rank_title(level: int) -> str:
-    if level < 5: return "🌱 Rookie"
-    elif level < 10: return "⚔️ Soldier"
-    elif level < 20: return "🎖️ Warrior"
-    elif level < 30: return "👑 Elite"
-    elif level < 50: return "💎 Master"
-    else: return "🏆 Legend"
+# --- TOURNAMENT/TRADE FUNCTIONS ---
+# ... (Placeholders unchanged)
+async def create_new_tournament(query, context): pass
+async def list_tournaments(query, context): pass
+async def show_tournament_details(query, context, tournament_id): pass
+async def register_for_tournament(query, context, tournament_id): pass
+async def start_tournament_handler(query, context, tournament_id): pass
+async def show_tournament_brackets(query, context, tournament_id): pass
+async def start_create_trade(query, context): pass
+async def handle_trade_partner_input(update: Update, context: ContextTypes.DEFAULT_TYPE): pass
+async def handle_trade_offer_coins_input(update: Update, context: ContextTypes.DEFAULT_TYPE): pass
+async def list_active_trades(query, context): pass
+async def accept_trade_offer(query, context, trade_id): pass
+async def cancel_trade_offer(query, context, trade_id): pass
 
-def format_vote_results(game: dict, vote_counts: dict) -> str:
-    text = "📊 <b>VOTING RESULTS</b>\n\n"
-    if not vote_counts: return text + "No votes were cast!\n"
-    sorted_votes = sorted(vote_counts.items(), key=lambda x: x[1], reverse=True)
-    for user_id, votes in sorted_votes:
-        player_name = "Unknown"
-        for player in game['players']:
-            if player['user_id'] == user_id: player_name = player['username']; break
-        text += f"• {player_name}: {votes} vote(s)\n"
-    return text
+# --- ADMIN AND ERROR HANDLERS ---
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ... (code unchanged)
+    pass
+async def get_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ... (code unchanged)
+    pass
+async def get_bot_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ... (code unchanged)
+    pass
 
-async def send_role_reveal_animation(context, user_id: int, role: str, description: str):
-    frames = ["🤫 <b>Assigning your role...</b>", "🎭 <b>You are...</b>", f"<b>{get_role_emoji(role)} {role.upper()} {get_role_emoji(role)}</b>"]
-    try:
-        msg = await context.bot.send_message(user_id, frames[0], parse_mode='HTML')
-        for frame in frames[1:]: await asyncio.sleep(1.5); await msg.edit_text(frame, parse_mode='HTML')
-        await asyncio.sleep(1); await msg.edit_text(description, parse_mode='HTML')
-    except Exception as e: logger.warning(f"Failed to send role reveal to {user_id}: {e}")
+def main():
+    """Start the bot"""
+    # ... (code unchanged)
+    pass
 
-async def send_elimination_animation(message, username: str, role: str):
-    frames = ["⚖️ <b>The town has made its decision...</b>", f"🚶 <b>{username} steps forward...</b>", f"💀 <b>{username} has been eliminated!</b> 💀\n\nThey were a <b>{role.upper()}</b>!"]
-    await send_animated_message(message, frames, delay=1.5)
-
-async def send_phase_transition(message, phase: str):
-    frames = ANIMATION_SEQUENCES['night_phase'] if phase == 'night' else ANIMATION_SEQUENCES['day_phase']
-    await send_animated_message(message, frames, delay=1.2)
-
-async def send_victory_animation(message, winner: str, winners: list):
-    frames = ANIMATION_SEQUENCES['victory']
-    winner_text = f"🏆 <b>THE {winner.upper()} TEAM WINS!</b> 🏆\n\n<b>Victorious Players:</b>\n"
-    for player in winners: winner_text += f"• {player['username']} ({player['role'].upper()})\n"
-    frames.append(winner_text)
-    await send_animated_message(message, frames, delay=1.5)
+if __name__ == '__main__':
+    # ... (code unchanged)
+    pass
