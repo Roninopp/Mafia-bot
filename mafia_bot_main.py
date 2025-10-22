@@ -17,7 +17,8 @@ from telegram.ext import (
     filters,
     CallbackQueryHandler
 )
-from game_manager import GameManager
+# --- Import from our files ---
+from game_manager import GameManager, game_manager # Import the global instance
 from player_manager import PlayerManager
 from enhanced_features import tournament_system, trading_system
 from config import BOT_TOKEN, FEATURES, SHOP_ITEMS, ADMIN_IDS, MISSION_REWARDS, ANIMATION_SEQUENCES, BOT_USERNAME, MAFIA_PIC_URL
@@ -25,7 +26,7 @@ from utils import (
     create_main_menu_keyboard, create_play_menu_keyboard,
     format_player_stats, format_leaderboard_entry,
     send_animated_message, send_role_reveal_animation,
-    create_shop_keyboard, create_lobby_keyboard,
+    create_shop_keyboard, # create_lobby_keyboard is now in this file
     create_missions_menu_keyboard, get_role_emoji,
     create_tournament_menu_keyboard, create_trade_menu_keyboard
 )
@@ -39,8 +40,41 @@ logger = logging.getLogger(__name__)
 
 
 # Global managers
-game_manager = GameManager()
+# game_manager is imported from game_manager.py
 player_manager = PlayerManager()
+
+
+# --- FIX: Moved lobby keyboard here to fix circular import ---
+def create_lobby_keyboard(game_id: str, viewer_user_id: int) -> InlineKeyboardMarkup:
+    """Create game lobby inline keyboard, showing Start only if viewer is creator and lobby is ready."""
+    keyboard = []
+    game = game_manager.get_game(game_id) 
+
+    if not game:
+        return InlineKeyboardMarkup([[InlineKeyboardButton("Error: Game not found", callback_data="none")]])
+
+    is_player_in_game = any(p['user_id'] == viewer_user_id for p in game['players'])
+    if game['status'] == 'waiting' and not is_player_in_game:
+        max_players = game_manager.get_required_players(game['mode'])
+        if len(game['players']) < max_players:
+             keyboard.append([InlineKeyboardButton("✅ Join Game", callback_data=f"join_game_{game_id}")])
+
+    is_creator = (viewer_user_id == game['creator_id'])
+    required_players = game_manager.get_required_players(game['mode'])
+    if is_creator and game['status'] == 'waiting' and len(game['players']) >= required_players:
+        keyboard.append([InlineKeyboardButton("🚀 Start Game", callback_data=f"start_game_{game_id}")])
+
+    if is_creator and game['status'] == 'waiting':
+        keyboard.append([InlineKeyboardButton("❌ Cancel Game", callback_data=f"cancel_game_{game_id}")])
+
+    if not keyboard and is_player_in_game and game['status'] == 'in_progress':
+         keyboard.append([InlineKeyboardButton("...Game in Progress...", callback_data="none")])
+    elif not keyboard:
+         keyboard.append([InlineKeyboardButton("🔙 Menu", callback_data="menu_main")])
+
+
+    return InlineKeyboardMarkup(keyboard)
+# ---------------------------------------------------------
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -77,47 +111,34 @@ async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def shop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player = player_manager.get_player(update.effective_user.id)
-    if not player:
-        await update.message.reply_text("/start first.")
-        return
+    if not player: await update.message.reply_text("/start first."); return
     text = f"🏪 SHOP | 💰 Coins: <b>{player['coins']}</b>"
     keyboard = create_shop_keyboard(player['items'])
     await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
 
 async def profile_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player = player_manager.get_player(update.effective_user.id)
-    if not player:
-        await update.message.reply_text("/start first.")
-        return
+    if not player: await update.message.reply_text("/start first."); return
     await update.message.reply_text(format_player_stats(player), parse_mode='HTML')
 
 async def leaderboard_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    top = player_manager.get_leaderboard(10)
-    text = "🏆 TOP PLAYERS 🏆\n\n"
-    if not top:
-        text += "None yet!"
-    else:
-        text += "\n".join(format_leaderboard_entry(i, p) for i, p in enumerate(top, 1))
+    top = player_manager.get_leaderboard(10); text = "🏆 TOP PLAYERS 🏆\n\n"
+    if not top: text += "None yet!"
+    else: text += "\n".join(format_leaderboard_entry(i, p) for i, p in enumerate(top, 1))
     await update.message.reply_text(text, parse_mode='HTML')
 
 async def daily_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     success, reward = player_manager.claim_daily_reward(update.effective_user.id)
-    if success:
-        text = f"🎉 DAILY REWARD! 🎉\n💎{reward['xp']} XP\n🪙{reward['coins']} Coins\n🔥Streak: {reward['streak']}"
-    else:
-        text = "⏰ Already Claimed!"
+    if success: text = f"🎉 DAILY REWARD! 🎉\n💎{reward['xp']} XP\n🪙{reward['coins']} Coins\n🔥Streak: {reward['streak']}"
+    else: text = "⏰ Already Claimed!"
     await update.message.reply_text(text, parse_mode='HTML')
 
 async def tournament_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not FEATURES['tournaments_enabled']:
-        await update.message.reply_text("Tournaments off.")
-        return
+    if not FEATURES['tournaments_enabled']: await update.message.reply_text("Tournaments off."); return
     await update.message.reply_text("🏆 TOURNAMENTS 🏆", reply_markup=create_tournament_menu_keyboard())
 
 async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not FEATURES['trading_enabled']:
-        await update.message.reply_text("Trading off.")
-        return
+    if not FEATURES['trading_enabled']: await update.message.reply_text("Trading off."); return
     await update.message.reply_text("📈 TRADING POST 📈", reply_markup=create_trade_menu_keyboard())
 
 async def help_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -132,41 +153,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text, user_id = update.message.text, update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
     player_manager.register_player(user_id, username)
-    if context.user_data.get('state') == 'awaiting_trade_partner':
-        await handle_trade_partner_input(update, context)
-        return
-    if context.user_data.get('state') == 'awaiting_trade_offer_coins':
-        await handle_trade_offer_coins_input(update, context)
-        return
-    if any(e in text for e in ['🔪','🔍','💉']):
-        await game_manager.handle_action(update, context)
-        return
-    if any(e in text for e in ['🗳️','Vote:','⏭️']):
-        await game_manager.handle_vote(update, context)
-        return
-    if update.effective_chat.type == 'private':
-        await update.message.reply_text("Use commands or buttons.")
+    if context.user_data.get('state') == 'awaiting_trade_partner': await handle_trade_partner_input(update, context); return
+    if context.user_data.get('state') == 'awaiting_trade_offer_coins': await handle_trade_offer_coins_input(update, context); return
+    if any(e in text for e in ['🔪','🔍','💉']): await game_manager.handle_action(update, context); return
+    if any(e in text for e in ['🗳️','Vote:','⏭️']): await game_manager.handle_vote(update, context); return
+    if update.effective_chat.type == 'private': await update.message.reply_text("Use commands or buttons.")
 
 
 # --- Callback Query Handler ---
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query or not query.message: return
-    try:
-        await query.answer()
+    try: await query.answer()
     except BadRequest as e:
         if "query is too old" in str(e).lower(): return
-        logger.error(f"Err answering query: {e}")
-        return
+        logger.error(f"Err answering query: {e}"); return
 
     data, user_id = query.data, query.from_user.id
     username = query.from_user.username or query.from_user.first_name
     logger.info(f"Callback: data='{data}', user={user_id}")
 
     if not data.startswith(('mission_','shoot_','case_','dilemma_','disarm_','heist_','trade_','tourn_')):
-        context.user_data.pop('mission_state', None)
-        context.user_data.pop('trade_setup', None)
-        context.user_data.pop('state', None)
+        context.user_data.pop('mission_state', None); context.user_data.pop('trade_setup', None); context.user_data.pop('state', None)
 
     try:
         if data == 'menu_main': await show_main_menu_callback(query, context)
@@ -285,11 +293,10 @@ async def join_game_action(query, context, game_id: str, user_id: int, username:
     success, msg = game_manager.join_game(game_id, user_id, username)
     if success:
         await query.answer("✅ Joined!")
-        game = game_manager.get_game(game_id)
-        req = game_manager.get_required_players(game['mode'])
+        game = game_manager.get_game(game_id); req = game_manager.get_required_players(game['mode'])
         text = f"🎮 LOBBY <code>{game_id}</code> | <b>{game['mode'].upper()}</b>\n👥 {len(game['players'])}/{req}\n\nPlayers:\n"
         text += "\n".join(f"{'👑' if p['user_id']==game['creator_id'] else '•'} {p['username']}" for p in game['players'])
-        if len(game['players']) >= req: text += "\n🎉 Full! Ready to start!"
+        if len(game['players'])>=req: text+="\n🎉 Full! Ready to start!"
         
         # This will show the correct buttons for the person who clicked "Join"
         keyboard = create_lobby_keyboard(game_id, viewer_user_id=user_id)
@@ -310,7 +317,6 @@ async def join_game_action(query, context, game_id: str, user_id: int, username:
     else:
         await query.answer(f"❌ {msg}", True)
 
-
 async def start_game_action(query, context, game_id: str, user_id: int):
     success, msg = game_manager.start_game(game_id, user_id)
     if not success: await query.answer(f"❌ {msg}", True); return
@@ -321,14 +327,12 @@ async def start_game_action(query, context, game_id: str, user_id: int):
         desc = game_manager.get_role_description(p['role'])
         await send_role_reveal_animation(context, p['user_id'], p['role'], desc)
     await query.edit_message_text("🎮 Game Started! Check PMs!", reply_markup=None, parse_mode='HTML')
-    await asyncio.sleep(2)
-    await game_manager.start_round(game_id, query.message, context)
+    await asyncio.sleep(2); await game_manager.start_round(game_id, query.message, context)
 
 async def cancel_game_action(query, context, game_id: str, user_id: int):
     success, msg = game_manager.cancel_game(game_id, user_id)
     if success:
         await query.answer("✅ Cancelled!")
-        # Go back to the *text* message, not the photo
         await query.edit_message_text(f"🚬 Welcome back, {query.from_user.first_name}.\n\nWhat's the move?",
                                       reply_markup=create_main_menu_keyboard(is_private=True),
                                       parse_mode='HTML')
@@ -365,16 +369,14 @@ async def send_target_practice_round(query, context):
     if not state:
         logger.warning("Target practice state missing!")
         return
-
-    score = state.get('score', 0)
-    round_num = state.get('round', 0)
-
+    score, round_num = state.get('score', 0), state.get('round', 0)
     if round_num >= 7:
         await end_target_practice(query, context)
         return
-
+    
     target_name = random.choice(['Villager','Villager','Mafia','Doctor'])
     target_str = f"{get_role_emoji(target_name.lower())} {target_name}"
+    
     state['current_target'] = target_name
     state['round'] = round_num + 1
     text = f"<b>SCORE:{score}</b> | R:{state['round']}/7\n\n{target_str}\n\nSHOOT?"
@@ -418,11 +420,9 @@ async def handle_target_practice(query, context, data):
 async def end_target_practice(query, context):
     state = context.user_data.pop('mission_state', None)
     if not state: return
-    user_id = query.from_user.id
-    score = state.get('score', 0)
+    user_id, score = query.from_user.id, state.get('score', 0)
     rewards = MISSION_REWARDS['target_practice']
-    xp = rewards.get('xp', 0) + (score // 10)
-    coin = rewards.get('coins', 0) + (score // 5)
+    xp, coin = rewards.get('xp', 0) + (score // 10), rewards.get('coins', 0) + (score // 5)
     if xp > 0: player_manager.add_xp(user_id, xp)
     if coin > 0: player_manager.add_coins(user_id, coin)
     text = f"🎯 DONE! Score:<b>{score}</b>\n💎{xp} XP\n🪙{coin} Coins"
@@ -539,30 +539,18 @@ async def handle_mafia_heist(query, context, data):
 
 
 # --- TOURNAMENT/TRADE FUNCTIONS ---
-async def create_new_tournament(query, context):
-    await query.answer("Coming soon!", True)
-async def list_tournaments(query, context):
-    await safe_edit_message(query, "No tournaments open.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_tournament')]]))
-async def show_tournament_details(query, context, tournament_id):
-    await query.answer("Coming soon!", True)
-async def register_for_tournament(query, context, tournament_id):
-    await query.answer("Coming soon!", True)
-async def start_tournament_handler(query, context, tournament_id):
-    await query.answer("Coming soon!", True)
-async def show_tournament_brackets(query, context, tournament_id):
-    await query.answer("Coming soon!", True)
-async def start_create_trade(query, context):
-    await safe_edit_message(query, "Trade creation coming soon.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_trade')]]))
-async def handle_trade_partner_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Trade setup coming soon...")
-async def handle_trade_offer_coins_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Trade setup coming soon...")
-async def list_active_trades(query, context):
-    await query.answer("Coming soon!", True)
-async def accept_trade_offer(query, context, trade_id):
-    await query.answer("Coming soon!", True)
-async def cancel_trade_offer(query, context, trade_id):
-    await query.answer("Coming soon!", True)
+async def create_new_tournament(query, context): await query.answer("Coming soon!", True)
+async def list_tournaments(query, context): await safe_edit_message(query, "No tournaments open.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_tournament')]]))
+async def show_tournament_details(query, context, tournament_id): await query.answer("Coming soon!", True)
+async def register_for_tournament(query, context, tournament_id): await query.answer("Coming soon!", True)
+async def start_tournament_handler(query, context, tournament_id): await query.answer("Coming soon!", True)
+async def show_tournament_brackets(query, context, tournament_id): await query.answer("Coming soon!", True)
+async def start_create_trade(query, context): await safe_edit_message(query, "Trade creation coming soon.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_trade')]]))
+async def handle_trade_partner_input(update: Update, context: ContextTypes.DEFAULT_TYPE): await update.message.reply_text("Trade setup coming soon...")
+async def handle_trade_offer_coins_input(update: Update, context: ContextTypes.DEFAULT_TYPE): await update.message.reply_text("Trade setup coming soon...")
+async def list_active_trades(query, context): await query.answer("Coming soon!", True)
+async def accept_trade_offer(query, context, trade_id): await query.answer("Coming soon!", True)
+async def cancel_trade_offer(query, context, trade_id): await query.answer("Coming soon!", True)
 
 
 # --- ADMIN AND ERROR HANDLERS ---
@@ -577,19 +565,13 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS: return await update.message.reply_text("❌ Unauthorized.")
-    log_file = 'nohup.out' # Main log
-    activity_log = 'bot_activity.log' # New, more detailed log
-    
-    try:
+    log_files = ['nohup.out', 'bot_activity.log'] # Send both logs
+    for log_file in log_files:
         if os.path.exists(log_file):
-            await context.bot.send_document(chat_id=user_id, document=InputFile(log_file, filename='nohup.out.txt'))
-        if os.path.exists(activity_log):
-             await context.bot.send_document(chat_id=user_id, document=InputFile(activity_log, filename='bot_activity.log.txt'))
+            try: await context.bot.send_document(chat_id=user_id, document=InputFile(log_file, filename=f"{log_file}.txt"))
+            except Exception as e: await update.message.reply_text(f"❌ Failed to send {log_file}: {e}")
         else:
-            await update.message.reply_text("No log files found.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Failed: {e}")
-
+            await update.message.reply_text(f"❌ `{log_file}` not found.")
 
 async def get_bot_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -636,4 +618,4 @@ def main():
 # --- FIX: Removed duplicate main() call ---
 if __name__ == '__main__':
     main()
-# ----------------------------------------# ----------------------------------------
+# ----------------------------------------
