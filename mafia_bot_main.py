@@ -19,9 +19,7 @@ from telegram.ext import (
 )
 from game_manager import GameManager
 from player_manager import PlayerManager
-# --- Import Tournament & Trading Systems ---
 from enhanced_features import tournament_system, trading_system
-# ----------------------------------------
 from config import BOT_TOKEN, FEATURES, SHOP_ITEMS, ADMIN_IDS, MISSION_REWARDS, ANIMATION_SEQUENCES, BOT_USERNAME, MAFIA_PIC_URL
 from utils import (
     create_main_menu_keyboard, create_play_menu_keyboard,
@@ -29,9 +27,7 @@ from utils import (
     send_animated_message, send_role_reveal_animation,
     create_shop_keyboard, create_lobby_keyboard,
     create_missions_menu_keyboard, get_role_emoji,
-    # --- Import New Keyboards ---
     create_tournament_menu_keyboard, create_trade_menu_keyboard
-    # ---------------------------
 )
 
 # Configure logging
@@ -39,13 +35,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-# Add File Handler for persistent logging
-log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-log_handler = logging.FileHandler('bot_activity.log') # New log file
-log_handler.setFormatter(log_formatter)
 logger = logging.getLogger(__name__)
-logger.addHandler(log_handler) # Add file handler
-logger.setLevel(logging.INFO) # Ensure logger level is set
+
 
 # Global managers
 game_manager = GameManager()
@@ -86,34 +77,47 @@ async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def shop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player = player_manager.get_player(update.effective_user.id)
-    if not player: await update.message.reply_text("/start first."); return
+    if not player:
+        await update.message.reply_text("/start first.")
+        return
     text = f"🏪 SHOP | 💰 Coins: <b>{player['coins']}</b>"
     keyboard = create_shop_keyboard(player['items'])
     await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
 
 async def profile_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player = player_manager.get_player(update.effective_user.id)
-    if not player: await update.message.reply_text("/start first."); return
+    if not player:
+        await update.message.reply_text("/start first.")
+        return
     await update.message.reply_text(format_player_stats(player), parse_mode='HTML')
 
 async def leaderboard_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    top = player_manager.get_leaderboard(10); text = "🏆 TOP PLAYERS 🏆\n\n"
-    if not top: text += "None yet!"
-    else: text += "\n".join(format_leaderboard_entry(i, p) for i, p in enumerate(top, 1))
+    top = player_manager.get_leaderboard(10)
+    text = "🏆 TOP PLAYERS 🏆\n\n"
+    if not top:
+        text += "None yet!"
+    else:
+        text += "\n".join(format_leaderboard_entry(i, p) for i, p in enumerate(top, 1))
     await update.message.reply_text(text, parse_mode='HTML')
 
 async def daily_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     success, reward = player_manager.claim_daily_reward(update.effective_user.id)
-    if success: text = f"🎉 DAILY REWARD! 🎉\n💎{reward['xp']} XP\n🪙{reward['coins']} Coins\n🔥Streak: {reward['streak']}"
-    else: text = "⏰ Already Claimed!"
+    if success:
+        text = f"🎉 DAILY REWARD! 🎉\n💎{reward['xp']} XP\n🪙{reward['coins']} Coins\n🔥Streak: {reward['streak']}"
+    else:
+        text = "⏰ Already Claimed!"
     await update.message.reply_text(text, parse_mode='HTML')
 
 async def tournament_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not FEATURES['tournaments_enabled']: await update.message.reply_text("Tournaments off."); return
+    if not FEATURES['tournaments_enabled']:
+        await update.message.reply_text("Tournaments off.")
+        return
     await update.message.reply_text("🏆 TOURNAMENTS 🏆", reply_markup=create_tournament_menu_keyboard())
 
 async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not FEATURES['trading_enabled']: await update.message.reply_text("Trading off."); return
+    if not FEATURES['trading_enabled']:
+        await update.message.reply_text("Trading off.")
+        return
     await update.message.reply_text("📈 TRADING POST 📈", reply_markup=create_trade_menu_keyboard())
 
 async def help_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -125,24 +129,44 @@ async def help_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # --- Message Handler ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (code unchanged) ...
-    pass
+    text, user_id = update.message.text, update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name
+    player_manager.register_player(user_id, username)
+    if context.user_data.get('state') == 'awaiting_trade_partner':
+        await handle_trade_partner_input(update, context)
+        return
+    if context.user_data.get('state') == 'awaiting_trade_offer_coins':
+        await handle_trade_offer_coins_input(update, context)
+        return
+    if any(e in text for e in ['🔪','🔍','💉']):
+        await game_manager.handle_action(update, context)
+        return
+    if any(e in text for e in ['🗳️','Vote:','⏭️']):
+        await game_manager.handle_vote(update, context)
+        return
+    if update.effective_chat.type == 'private':
+        await update.message.reply_text("Use commands or buttons.")
+
 
 # --- Callback Query Handler ---
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query or not query.message: return
-    try: await query.answer()
+    try:
+        await query.answer()
     except BadRequest as e:
         if "query is too old" in str(e).lower(): return
-        logger.error(f"Err answering query: {e}"); return
+        logger.error(f"Err answering query: {e}")
+        return
 
     data, user_id = query.data, query.from_user.id
     username = query.from_user.username or query.from_user.first_name
-    logger.info(f"Callback: data='{data}', user={user_id}") # Log callback data
+    logger.info(f"Callback: data='{data}', user={user_id}")
 
     if not data.startswith(('mission_','shoot_','case_','dilemma_','disarm_','heist_','trade_','tourn_')):
-        context.user_data.pop('mission_state', None); context.user_data.pop('trade_setup', None); context.user_data.pop('state', None)
+        context.user_data.pop('mission_state', None)
+        context.user_data.pop('trade_setup', None)
+        context.user_data.pop('state', None)
 
     try:
         if data == 'menu_main': await show_main_menu_callback(query, context)
@@ -183,7 +207,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         elif data.startswith('trade_cancel_'): await cancel_trade_offer(query, context, data.split('_')[-1])
         else: logger.warning(f"Unhandled callback: {data}"); await query.answer("?", True)
     except Exception as e:
-        logger.error(f"Err handling '{data}' for {user_id}: {e}", exc_info=True) # Log full traceback
+        logger.error(f"Err handling '{data}' for {user_id}: {e}", exc_info=True)
         await query.answer("⚠️ Error! Check logs.", True)
 
 
@@ -211,16 +235,21 @@ async def show_profile(query, context):
     await safe_edit_message(query, text, keyboard)
 
 async def show_leaderboard(query, context):
-    top = player_manager.get_leaderboard(10); text = "🏆 TOP PLAYERS 🏆\n\n"
-    if not top: text += "None yet!"
-    else: text += "\n".join(format_leaderboard_entry(i, p) for i, p in enumerate(top, 1))
+    top = player_manager.get_leaderboard(10)
+    text = "🏆 TOP PLAYERS 🏆\n\n"
+    if not top:
+        text += "None yet!"
+    else:
+        text += "\n".join(format_leaderboard_entry(i, p) for i, p in enumerate(top, 1))
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data='menu_main')]])
     await safe_edit_message(query, text, keyboard)
 
 async def claim_daily_reward(query, context):
     success, reward = player_manager.claim_daily_reward(query.from_user.id)
-    if success: text = f"🎉 DAILY! 🎉\n💎{reward['xp']} XP\n🪙{reward['coins']} Coins\n🔥Streak: {reward['streak']}"
-    else: text = "⏰ Claimed!"
+    if success:
+        text = f"🎉 DAILY! 🎉\n💎{reward['xp']} XP\n🪙{reward['coins']} Coins\n🔥Streak: {reward['streak']}"
+    else:
+        text = "⏰ Claimed!"
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data='menu_main')]])
     await safe_edit_message(query, text, keyboard)
 
@@ -254,20 +283,34 @@ async def create_game_lobby(query, context, mode: str):
     req = game_manager.get_required_players(mode)
     text = (f"🎮 LOBBY <code>{game_id}</code> | <b>{mode.upper()}</b>\n"
             f"👥 {len(game['players'])}/{req} | 👑 {query.from_user.username or query.from_user.first_name}\nWaiting...")
-    keyboard = create_lobby_keyboard(game_id, is_creator=True)
+    keyboard = create_lobby_keyboard(game_id, viewer_user_id=user_id)
     await safe_edit_message(query, text, keyboard)
 
 async def join_game_action(query, context, game_id: str, user_id: int, username: str):
     success, msg = game_manager.join_game(game_id, user_id, username)
     if success:
         await query.answer("✅ Joined!")
-        game = game_manager.get_game(game_id); req = game_manager.get_required_players(game['mode'])
+        game = game_manager.get_game(game_id)
+        req = game_manager.get_required_players(game['mode'])
         text = f"🎮 LOBBY <code>{game_id}</code> | <b>{game['mode'].upper()}</b>\n👥 {len(game['players'])}/{req}\n\nPlayers:\n"
         text += "\n".join(f"{'👑' if p['user_id']==game['creator_id'] else '•'} {p['username']}" for p in game['players'])
-        if len(game['players'])>=req: text+="\n🎉 Full!"
-        keyboard = create_lobby_keyboard(game_id, is_creator=(user_id==game['creator_id']))
+        if len(game['players']) >= req: text += "\n🎉 Full! Ready to start!"
+        
+        # This will show the correct buttons for the person who clicked "Join"
+        keyboard = create_lobby_keyboard(game_id, viewer_user_id=user_id)
         await safe_edit_message(query, text, keyboard)
-    else: await query.answer(f"❌ {msg}", True)
+        
+        # Attempt to update for the creator as well
+        if game['creator_id'] != user_id:
+             try:
+                 # We need a way to find the original message to edit it for the creator.
+                 # This is complex. A simpler solution is to just let the message be updated for everyone.
+                 creator_keyboard = create_lobby_keyboard(game_id, viewer_user_id=game['creator_id'])
+                 await query.edit_message_reply_markup(reply_markup=creator_keyboard)
+             except Exception as e:
+                 logger.error(f"Could not update creator's lobby view dynamically: {e}")
+    else:
+        await query.answer(f"❌ {msg}", True)
 
 async def start_game_action(query, context, game_id: str, user_id: int):
     success, msg = game_manager.start_game(game_id, user_id)
@@ -279,7 +322,8 @@ async def start_game_action(query, context, game_id: str, user_id: int):
         desc = game_manager.get_role_description(p['role'])
         await send_role_reveal_animation(context, p['user_id'], p['role'], desc)
     await query.edit_message_text("🎮 Game Started! Check PMs!", reply_markup=None, parse_mode='HTML')
-    await asyncio.sleep(2); await game_manager.start_round(game_id, query.message, context)
+    await asyncio.sleep(2)
+    await game_manager.start_round(game_id, query.message, context)
 
 async def cancel_game_action(query, context, game_id: str, user_id: int):
     success, msg = game_manager.cancel_game(game_id, user_id)
@@ -299,7 +343,7 @@ async def handle_purchase(query, context, item_id, user_id):
     else: await query.answer("❌ Failed!", True)
 
 
-# --- MISSIONS (Syntax Corrected) ---
+# --- MISSIONS (Corrected Syntax) ---
 async def show_missions_menu(query, context):
     text = "🚀 SINGLE-PLAYER MISSIONS 🚀\n\nChoose challenge:"
     keyboard = create_missions_menu_keyboard()
@@ -313,48 +357,180 @@ async def start_target_practice(query, context):
 
 async def send_target_practice_round(query, context):
     state = context.user_data.get('mission_state')
-    if not state: logger.warning("Target practice state missing!"); return
-    score, round_num = state.get('score', 0), state.get('round', 0)
-    if round_num >= 7: await end_target_practice(query, context); return
-    target = random.choice(['👥 Villager','👥 Villager','🔪 Mafia','💉 Doctor'])
-    emoji = get_role_emoji(target.split(' ')[-1].lower())
-    state['current_target'] = target.split(' ')[-1]
+    if not state:
+        logger.warning("Target practice state missing!")
+        return
+
+    score = state.get('score', 0)
+    round_num = state.get('round', 0)
+
+    if round_num >= 7:
+        await end_target_practice(query, context)
+        return
+
+    target_name = random.choice(['Villager','Villager','Mafia','Doctor'])
+    target_str = f"{get_role_emoji(target_name.lower())} {target_name}"
+    state['current_target'] = target_name
     state['round'] = round_num + 1
-    text = f"<b>SCORE:{score}</b>|R:{state['round']}/7\n{emoji}<b>{target}</b>{emoji}\nSHOOT?"
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💥", callback_data="shoot_Shoot"), InlineKeyboardButton("✋", callback_data="shoot_Hold")]])
+    text = f"<b>SCORE:{score}</b> | R:{state['round']}/7\n{target_str}\nSHOOT?"
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💥 SHOOT", callback_data="shoot_Shoot"), InlineKeyboardButton("✋ HOLD", callback_data="shoot_Hold")]])
     await safe_edit_message(query, text, keyboard)
 
 async def handle_target_practice(query, context, data):
     state = context.user_data.get('mission_state')
     if not state or 'current_target' not in state:
-        await safe_edit_message(query, "Mission expired.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])); return
-    target, action = state.get('current_target'), data.split('_')[-1]
+        await safe_edit_message(query, "Mission expired.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]]))
+        return
+
+    target = state.get('current_target')
+    action = data.split('_')[-1]
     feedback = ""
-    score = state.get('score', 0) # Get current score
+    score = state.get('score', 0)
+
     if action == 'Shoot':
-        if target == 'Mafia': score += 100; feedback = "💥 Hit!"
-        else: score -= 75; feedback = "❌ Civilian!"
+        if target == 'Mafia':
+            score += 100
+            feedback = "💥 Hit!"
+        else:
+            score -= 75
+            feedback = "❌ Civilian!"
     elif action == 'Hold':
-        if target != 'Mafia': score += 20; feedback = "✅ Good!"
-        else: score -= 50; feedback = "❌ Missed!"
-    state['score'] = score # Update score in state
+        if target != 'Mafia':
+            score += 20
+            feedback = "✅ Good!"
+        else:
+            score -= 50
+            feedback = "❌ Missed!"
+            
+    state['score'] = score
     await safe_edit_message(query, f"<b>{feedback}</b>\nNext...", None)
     await asyncio.sleep(1.5)
     await send_target_practice_round(query, context)
 
-# ... (rest of mission functions unchanged) ...
-async def end_target_practice(query, context): state = context.user_data.pop('mission_state', None); user_id, score = query.from_user.id, state.get('score', 0); rewards = MISSION_REWARDS['target_practice']; xp, coin = rewards.get('xp', 0) + (score // 10), rewards.get('coins', 0) + (score // 5); if xp > 0: player_manager.add_xp(user_id, xp); if coin > 0: player_manager.add_coins(user_id, coin); text = f"🎯 DONE! Score:<b>{score}</b>\n💎{xp} XP\n🪙{coin} Coins"; keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_missions')]]); await safe_edit_message(query, text, keyboard)
-async def start_detectives_case(query, context): await safe_edit_message(query, "🔍 Memorize...", None); await asyncio.sleep(2); roles = ['mafia','detective','doctor','villager']; sequence=[get_role_emoji(random.choice(roles)) for _ in range(4)]; seq_str=" ".join(sequence); context.user_data['mission_state']={'correct_answer':seq_str}; await query.edit_message_text(f"Memorize:\n<b>{seq_str}</b>\n(5s!)", parse_mode='HTML'); await asyncio.sleep(5); options=[seq_str]; for _ in range(3): fake=" ".join([get_role_emoji(random.choice(roles)) for _ in range(4)]); while fake in options: fake=" ".join([get_role_emoji(random.choice(roles)) for _ in range(4)]); options.append(fake); random.shuffle(options); buttons=[[InlineKeyboardButton(opt, callback_data=f"case_answer_{i}")] for i,opt in enumerate(options)]; context.user_data['mission_state']['options']=options; await safe_edit_message(query, "Sequence?", InlineKeyboardMarkup(buttons))
-async def handle_detectives_case(query, context, data): state = context.user_data.pop('mission_state', None); if not state: await safe_edit_message(query, "Expired.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])); return; correct, options = state.get('correct_answer'), state.get('options'); try: chosen=options[int(data.split('_')[-1])] except: await safe_edit_message(query, "Invalid.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])); return; rewards, user_id = MISSION_REWARDS['detectives_case'], query.from_user.id; if chosen==correct: player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0)); text=f"✅ Solved!\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins" else: text=f"❌ Wrong!\nCorrect:\n{correct}"; keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_missions')]]); await safe_edit_message(query, text, keyboard)
-async def start_doctors_dilemma(query, context): puzzles=[{"q":"P A:\"Villager\", P B:\"A lies\". Mafia lies. Who?", "a":"dilemma_answer_A", "options":[("A","dilemma_answer_A"),("B","dilemma_answer_B")]},{"q":"P1:Inn, P2:Inn. One is GF(lies). P1:\"Vill\", P2:\"One true\". Who GF?", "a":"dilemma_answer_B", "options":[("P1","dilemma_answer_A"),("P2","dilemma_answer_B")]}]; puzzle=random.choice(puzzles); context.user_data['mission_state']={'correct_answer': puzzle['a']}; buttons=[[InlineKeyboardButton(t,cb) for t,cb in puzzle['options']]]; await safe_edit_message(query, f"💉 Dilemma:\n{puzzle['q']}", InlineKeyboardMarkup(buttons))
-async def handle_doctors_dilemma(query, context, data): state = context.user_data.pop('mission_state', None); if not state: await safe_edit_message(query, "Expired.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])); return; correct, user_id, rewards = state.get('correct_answer'), query.from_user.id, MISSION_REWARDS['doctors_dilemma']; if data==correct: player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0)); text=f"✅ Correct!\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins" else: text="❌ Wrong!"; keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_missions')]]); await safe_edit_message(query, text, keyboard)
-async def start_timed_disarm(query, context): context.user_data['mission_state']={'clicks':0,'end_time':asyncio.get_event_loop().time()+10.0}; text="💣 DISARM! (10s)"; keyboard=InlineKeyboardMarkup([[InlineKeyboardButton("CLICK!", callback_data="disarm_click_0")]]); await safe_edit_message(query, text, keyboard)
-async def handle_timed_disarm(query, context, data): state = context.user_data.get('mission_state'); if not state: await query.answer(); return; time_left = state['end_time']-asyncio.get_event_loop().time(); if time_left<=0: await query.answer("Time!"); user_id, clicks = query.from_user.id, state.get('clicks', 0); context.user_data.pop('mission_state', None); rewards = MISSION_REWARDS['timed_disarm']; xp, coin = rewards.get('xp', 0)+(clicks*2), rewards.get('coins', 0)+clicks; if xp > 0: player_manager.add_xp(user_id,xp); if coin > 0: player_manager.add_coins(user_id,coin); text=f"🎉 DISARMED! Clicks:<b>{clicks}</b>\n💎{xp} XP\n🪙{coin} Coins"; keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_missions')]]); await safe_edit_message(query, text, keyboard); return; state['clicks']+=1; await query.answer(f"{state['clicks']}"); if state['clicks']%5==0: new_text=f"💣 DISARM! ({time_left:.1f}s)\nClicks:<b>{state['clicks']}</b>"; new_kb=InlineKeyboardMarkup([[InlineKeyboardButton(f"CLICK! [{state['clicks']}]", callback_data=f"disarm_click_{state['clicks']}")]]); try: await query.edit_message_text(new_text, reply_markup=new_kb) except: pass
-async def start_mafia_heist(query, context): text="💰 HEIST: Bank entrance. Guard away."; buttons=[[InlineKeyboardButton("🚪 Sneak", callback_data="heist_sneak")],[InlineKeyboardButton("🥊 Distract", callback_data="heist_distract")]]; await safe_edit_message(query, text, InlineKeyboardMarkup(buttons))
-async def handle_mafia_heist(query, context, data): user_id = query.from_user.id; if data in ['heist_sneak','heist_distract']: text = "At vault. Code or drill?"; buttons=[[InlineKeyboardButton("💻 Hack", callback_data="heist_hack")],[InlineKeyboardButton("🛠️ Drill", callback_data="heist_drill")]]; await safe_edit_message(query, text, InlineKeyboardMarkup(buttons)) elif data=='heist_hack': text="In! Loot! ...Click. Gun. Boss! Set up!"; rewards=MISSION_REWARDS['mafia_heist_fail']; player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0)); end_text=f"{text}\n💔 FAILED\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins"; keyboard=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]]); await safe_edit_message(query, end_text, keyboard) elif data=='heist_drill': text="Loud! Open! Loot! Alarms! Escape!"; rewards=MISSION_REWARDS['mafia_heist_success']; player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0)); end_text=f"{text}\n🎉 SUCCESS!\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins"; keyboard=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]]); await safe_edit_message(query, end_text, keyboard)
+async def end_target_practice(query, context):
+    state = context.user_data.pop('mission_state', None)
+    if not state: return
+    user_id = query.from_user.id
+    score = state.get('score', 0)
+    rewards = MISSION_REWARDS['target_practice']
+    xp = rewards.get('xp', 0) + (score // 10)
+    coin = rewards.get('coins', 0) + (score // 5)
+    if xp > 0: player_manager.add_xp(user_id, xp)
+    if coin > 0: player_manager.add_coins(user_id, coin)
+    text = f"🎯 DONE! Score:<b>{score}</b>\n💎{xp} XP\n🪙{coin} Coins"
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_missions')]])
+    await safe_edit_message(query, text, keyboard)
+
+async def start_detectives_case(query, context):
+    await safe_edit_message(query, "🔍 Memorize...", None)
+    await asyncio.sleep(2)
+    roles = ['mafia','detective','doctor','villager']
+    sequence = [get_role_emoji(random.choice(roles)) for _ in range(4)]
+    seq_str = " ".join(sequence)
+    context.user_data['mission_state'] = {'correct_answer': seq_str}
+    await query.edit_message_text(f"Memorize:\n<b>{seq_str}</b>\n(5s!)", parse_mode='HTML')
+    await asyncio.sleep(5)
+    options = [seq_str]
+    for _ in range(3):
+        fake = " ".join([get_role_emoji(random.choice(roles)) for _ in range(4)])
+        while fake in options: fake = " ".join([get_role_emoji(random.choice(roles)) for _ in range(4)])
+        options.append(fake)
+    random.shuffle(options)
+    buttons = [[InlineKeyboardButton(opt, callback_data=f"case_answer_{i}")] for i,opt in enumerate(options)]
+    context.user_data['mission_state']['options'] = options
+    await safe_edit_message(query, "Sequence?", InlineKeyboardMarkup(buttons))
+
+async def handle_detectives_case(query, context, data):
+    state = context.user_data.pop('mission_state', None)
+    if not state: await safe_edit_message(query, "Expired.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])); return
+    correct, options = state.get('correct_answer'), state.get('options')
+    try: chosen = options[int(data.split('_')[-1])]
+    except: await safe_edit_message(query, "Invalid.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])); return
+    rewards, user_id = MISSION_REWARDS['detectives_case'], query.from_user.id
+    if chosen == correct:
+        player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0))
+        text = f"✅ Solved!\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins"
+    else: text = f"❌ Wrong!\nCorrect:\n{correct}"
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_missions')]])
+    await safe_edit_message(query, text, keyboard)
+
+async def start_doctors_dilemma(query, context):
+    puzzles = [{"q":"P A:\"Villager\", P B:\"A lies\". Mafia lies. Who?", "a":"dilemma_answer_A", "options":[("A","dilemma_answer_A"),("B","dilemma_answer_B")]},
+               {"q":"P1:Inn, P2:Inn. One is GF(lies). P1:\"Villager\", P2:\"One true\". Who GF?", "a":"dilemma_answer_B", "options":[("P1","dilemma_answer_A"),("P2","dilemma_answer_B")]}]
+    puzzle = random.choice(puzzles)
+    context.user_data['mission_state'] = {'correct_answer': puzzle['a']}
+    buttons = [[InlineKeyboardButton(t,cb) for t,cb in puzzle['options']]]
+    await safe_edit_message(query, f"💉 Dilemma:\n{puzzle['q']}", InlineKeyboardMarkup(buttons))
+
+async def handle_doctors_dilemma(query, context, data):
+    state = context.user_data.pop('mission_state', None)
+    if not state: await safe_edit_message(query, "Expired.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])); return
+    correct, user_id, rewards = state.get('correct_answer'), query.from_user.id, MISSION_REWARDS['doctors_dilemma']
+    if data == correct:
+        player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0))
+        text = f"✅ Correct!\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins"
+    else: text = "❌ Wrong!"
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_missions')]])
+    await safe_edit_message(query, text, keyboard)
+
+async def start_timed_disarm(query, context):
+    context.user_data['mission_state'] = {'clicks':0, 'end_time':asyncio.get_event_loop().time()+10.0}
+    text = "💣 DISARM! (10s)"
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("CLICK!", callback_data="disarm_click_0")]])
+    await safe_edit_message(query, text, keyboard)
+
+async def handle_timed_disarm(query, context, data):
+    state = context.user_data.get('mission_state')
+    if not state: await query.answer(); return
+    time_left = state['end_time'] - asyncio.get_event_loop().time()
+    if time_left <= 0:
+        await query.answer("Time!")
+        user_id, clicks = query.from_user.id, state.get('clicks', 0)
+        context.user_data.pop('mission_state', None)
+        rewards = MISSION_REWARDS['timed_disarm']
+        xp, coin = rewards.get('xp', 0)+(clicks*2), rewards.get('coins', 0)+clicks
+        if xp > 0: player_manager.add_xp(user_id,xp)
+        if coin > 0: player_manager.add_coins(user_id,coin)
+        text = f"🎉 DISARMED! Clicks:<b>{clicks}</b>\n💎{xp} XP\n🪙{coin} Coins"
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_missions')]])
+        await safe_edit_message(query, text, keyboard)
+        return
+    state['clicks'] += 1; await query.answer(f"{state['clicks']}")
+    if state['clicks'] % 5 == 0:
+        new_text = f"💣 DISARM! ({time_left:.1f}s)\nClicks:<b>{state['clicks']}</b>"
+        new_kb = InlineKeyboardMarkup([[InlineKeyboardButton(f"CLICK! [{state['clicks']}]", callback_data=f"disarm_click_{state['clicks']}")]])
+        try: await query.edit_message_text(new_text, reply_markup=new_kb)
+        except: pass
+
+async def start_mafia_heist(query, context):
+    text = "💰 HEIST: Bank entrance. Guard away."
+    buttons = [[InlineKeyboardButton("🚪 Sneak", callback_data="heist_sneak")],[InlineKeyboardButton("🥊 Distract", callback_data="heist_distract")]]
+    await safe_edit_message(query, text, InlineKeyboardMarkup(buttons))
+
+async def handle_mafia_heist(query, context, data):
+    user_id = query.from_user.id
+    if data in ['heist_sneak','heist_distract']:
+        text = "At vault. Code or drill?"
+        buttons = [[InlineKeyboardButton("💻 Hack", callback_data="heist_hack")],[InlineKeyboardButton("🛠️ Drill", callback_data="heist_drill")]]
+        await safe_edit_message(query, text, InlineKeyboardMarkup(buttons))
+    elif data == 'heist_hack':
+        text = "In! Loot! ...Click. Gun. Boss! Set up!"
+        rewards = MISSION_REWARDS['mafia_heist_fail']
+        player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0))
+        end_text = f"{text}\n💔 FAILED\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins"
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])
+        await safe_edit_message(query, end_text, keyboard)
+    elif data == 'heist_drill':
+        text = "Loud! Open! Loot! Alarms! Escape!"
+        rewards = MISSION_REWARDS['mafia_heist_success']
+        player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0))
+        end_text = f"{text}\n🎉 SUCCESS!\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins"
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])
+        await safe_edit_message(query, end_text, keyboard)
+
 
 # --- TOURNAMENT/TRADE FUNCTIONS ---
-# ... (Placeholders unchanged)
+# ... (Placeholders remain unchanged)
 async def create_new_tournament(query, context): await query.answer("Coming soon!", True)
 async def list_tournaments(query, context): await safe_edit_message(query, "No tournaments open.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_tournament')]]))
 async def show_tournament_details(query, context, tournament_id): pass
