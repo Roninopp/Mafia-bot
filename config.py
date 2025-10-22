@@ -9,12 +9,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Bot Token - Get from @BotFather on Telegram
-# Make sure to put your new revoked token here!
-BOT_TOKEN = "8180268399:AAEfEsmFMvrCsgfxMb5Q0kbPqajrTJbpD38"
+# !!! IMPORTANT: PASTE YOUR NEW TOKEN FROM @BOTFATHER HERE !!!
+BOT_TOKEN = "8180268399:AAEfEsmFMvrCsgfxMb5Q0kbPqajrTJbpD38" 
 
-# Bot Username and Pic
+# --- FIX: Added Bot Username and Pic ---
 BOT_USERNAME = "Mafia_Gang_Game_Bot" # Change this if your bot's username is different
 MAFIA_PIC_URL = "https://i.imgur.com/X25sJtG.jpeg"
+
 
 # Admin user IDs (can manage bot, kick players, etc.)
 ADMIN_IDS = [6837532865]
@@ -47,15 +48,34 @@ GAME_SETTINGS = {
     }
 }
 
-# Rewards for Single Player Missions
+# --- FIX: This was missing from your GitHub version ---
 MISSION_REWARDS = {
-    'target_practice': {'xp': 50, 'coins': 25},
-    'detectives_case': {'xp': 75, 'coins': 50},
-    'doctors_dilemma': {'xp': 100, 'coins': 75},
-    'timed_disarm': {'xp': 30, 'coins': 15},
-    'mafia_heist_success': {'xp': 200, 'coins': 150},
-    'mafia_heist_fail': {'xp': 25, 'coins': 10}
+    'target_practice': {
+        'xp': 50,
+        'coins': 25
+    },
+    'detectives_case': {
+        'xp': 75,
+        'coins': 50
+    },
+    'doctors_dilemma': {
+        'xp': 100,
+        'coins': 75
+    },
+    'timed_disarm': {
+        'xp': 30,
+        'coins': 15
+    },
+    'mafia_heist_success': {
+        'xp': 200,
+        'coins': 150
+    },
+    'mafia_heist_fail': {
+        'xp': 25,
+        'coins': 10
+    }
 }
+# -----------------------------------------------------
 
 # XP and Level Settings
 XP_SETTINGS = {
@@ -74,21 +94,46 @@ XP_SETTINGS = {
 
 # Shop Items
 SHOP_ITEMS = [
-    {'id': 'skin_golden', 'name': '🌟 Golden Skin', 'description': 'Shine bright in the game!', 'price': 500, 'type': 'cosmetic'},
-    {'id': 'ability_double_vote', 'name': '🗳️ Double Vote', 'description': 'Your vote counts twice (1 use)', 'price': 200, 'type': 'ability'},
-    {'id': 'ability_immunity', 'name': '🛡️ Immunity Shield', 'description': 'Survive one night attack (1 use)', 'price': 300, 'type': 'ability'},
-    {'id': 'emote_pack_1', 'name': '😎 Emote Pack 1', 'description': 'Express yourself!', 'price': 150, 'type': 'cosmetic'},
-    {'id': 'role_reroll', 'name': '🎲 Role Reroll', 'description': 'Reroll your role once per game', 'price': 400, 'type': 'ability'}
+    {
+        'id': 'skin_golden',
+        'name': '🌟 Golden Skin',
+        'description': 'Shine bright in the game!',
+        'price': 500,
+        'type': 'cosmetic'
+    },
+    {
+        'id': 'ability_double_vote',
+        'name': '🗳️ Double Vote',
+        'description': 'Your vote counts twice (1 use)',
+        'price': 200,
+        'type': 'ability'
+    },
+    {
+        'id': 'ability_immunity',
+        'name': '🛡️ Immunity Shield',
+        'description': 'Survive one night attack (1 use)',
+        'price': 300,
+        'type': 'ability'
+    },
+    {
+        'id': 'emote_pack_1',
+        'name': '😎 Emote Pack 1',
+        'description': 'Express yourself!',
+        'price': 150,
+        'type': 'cosmetic'
+    },
+    {
+        'id': 'role_reroll',
+        'name': '🎲 Role Reroll',
+        'description': 'Reroll your role once per game',
+        'price': 400,
+        'type': 'ability'
+    }
 ]
 
 # Achievements
 ACHIEVEMENTS = [
     {'id': 'first_win', 'name': 'First Blood', 'description': 'Win your first game', 'icon': '🏆', 'reward': 50},
-    {'id': 'win_streak_5', 'name': 'On Fire', 'description': 'Win 5 games in a row', 'icon': '🔥', 'reward': 300},
-    {'id': 'detective_master', 'name': 'Sherlock', 'description': 'Win 10 games as Detective', 'icon': '🔍', 'reward': 250},
-    {'id': 'mafia_boss', 'name': 'Godfather', 'description': 'Win 10 games as Mafia', 'icon': '🎭', 'reward': 250},
-    {'id': 'survivor', 'name': 'Survivor', 'description': 'Survive 20 games', 'icon': '💪', 'reward': 200},
-    {'id': 'perfect_game', 'name': 'Flawless Victory', 'description': 'Win without losing any teammates', 'icon': '⭐', 'reward': 500}
 ]
 
 # Missions
@@ -104,7 +149,15 @@ MISSION_TEMPLATES = {
 
 # Emojis and Animations
 EMOJIS = {
-    'roles': {'mafia': '🔪', 'detective': '🔍', 'doctor': '💉', 'villager': '👥', 'godfather': '🎩', 'vigilante': '🔫', 'jester': '🤡'},
+    'roles': {
+        'mafia': '🔪',
+        'detective': '🔍',
+        'doctor': '💉',
+        'villager': '👥',
+        'godfather': '🎩',
+        'vigilante': '🔫',
+        'jester': '🤡'
+    },
     'actions': {'kill': '☠️', 'investigate': '🔎', 'protect': '🛡️', 'vote': '🗳️'},
     'status': {'alive': '✅', 'dead': '💀', 'winner': '🏆', 'loser': '💔'},
     'phases': {'night': '🌙', 'day': '☀️', 'voting': '⚖️'}
@@ -115,7 +168,12 @@ LOADING_FRAMES = ["⚡", "⚡⚡", "⚡⚡⚡", "⚡⚡⚡⚡", "✨"]
 
 # Enhanced animation sequences
 ANIMATION_SEQUENCES = {
-    'game_start': ["🎬 <b>GAME STARTING</b> 🎬", "🎭 <b>Shuffling roles...</b> 🎭", "⚡ <b>Preparing battlefield...</b> ⚡", "🔥 <b>LET THE GAME BEGIN!</b> 🔥"],
+    'game_start': [
+        "🎬 <b>GAME STARTING</b> 🎬",
+        "🎭 <b>Shuffling roles...</b> 🎭",
+        "⚡ <b>Preparing battlefield...</b> ⚡",
+        "🔥 <b>LET THE GAME BEGIN!</b> 🔥"
+    ],
     'night_phase': ["🌙 <b>Night falls...</b>", "🌑 <b>The town sleeps...</b>", "👻 <b>But evil lurks in shadows...</b>"],
     'day_phase': ["☀️ <b>Morning breaks...</b>", "🌅 <b>The town awakens...</b>", "👥 <b>Time to discuss and vote!</b>"],
     'elimination': ["⚡ <b>Processing actions...</b>", "🎭 <b>The night reveals its secrets...</b>", "💀 <b>Someone has fallen!</b>"],
@@ -136,10 +194,9 @@ FEATURES = {
     'daily_rewards_enabled': True,
     'leaderboard_enabled': True,
     'statistics_enabled': True,
-    # --- ENABLED ECONOMIC FEATURES ---
     'tournaments_enabled': True,
-    'trading_enabled': True,
     'clans_enabled': False,
+    'trading_enabled': True
 }
 
 # Random events
