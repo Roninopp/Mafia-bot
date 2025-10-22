@@ -9,11 +9,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Bot Token - Get from @BotFather on Telegram
-# !!! IMPORTANT: PASTE YOUR NEW TOKEN FROM @BOTFATHER HERE !!!
+# !!! PASTE YOUR REAL TOKEN HERE !!!
 BOT_TOKEN = "8180268399:AAEfEsmFMvrCsgfxMb5Q0kbPqajrTJbpD38" 
 
-# --- FIX: Added Bot Username and Pic ---
-BOT_USERNAME = "Mafia_Gang_Game_Bot" # Change this if your bot's username is different
+# --- NEW: Bot Username and Pic ---
+BOT_USERNAME = "Mafia_Gang_Game_Bot"
 MAFIA_PIC_URL = "https://i.imgur.com/X25sJtG.jpeg"
 
 
@@ -48,7 +48,7 @@ GAME_SETTINGS = {
     }
 }
 
-# --- FIX: This was missing from your GitHub version ---
+# --- NEW: Rewards for Single Player Missions ---
 MISSION_REWARDS = {
     'target_practice': {
         'xp': 50,
@@ -75,7 +75,7 @@ MISSION_REWARDS = {
         'coins': 10
     }
 }
-# -----------------------------------------------------
+
 
 # XP and Level Settings
 XP_SETTINGS = {
@@ -94,41 +94,11 @@ XP_SETTINGS = {
 
 # Shop Items
 SHOP_ITEMS = [
-    {
-        'id': 'skin_golden',
-        'name': '🌟 Golden Skin',
-        'description': 'Shine bright in the game!',
-        'price': 500,
-        'type': 'cosmetic'
-    },
-    {
-        'id': 'ability_double_vote',
-        'name': '🗳️ Double Vote',
-        'description': 'Your vote counts twice (1 use)',
-        'price': 200,
-        'type': 'ability'
-    },
-    {
-        'id': 'ability_immunity',
-        'name': '🛡️ Immunity Shield',
-        'description': 'Survive one night attack (1 use)',
-        'price': 300,
-        'type': 'ability'
-    },
-    {
-        'id': 'emote_pack_1',
-        'name': '😎 Emote Pack 1',
-        'description': 'Express yourself!',
-        'price': 150,
-        'type': 'cosmetic'
-    },
-    {
-        'id': 'role_reroll',
-        'name': '🎲 Role Reroll',
-        'description': 'Reroll your role once per game',
-        'price': 400,
-        'type': 'ability'
-    }
+    {'id': 'skin_golden', 'name': '🌟 Golden Skin', 'description': 'Shine bright!', 'price': 500, 'type': 'cosmetic'},
+    {'id': 'ability_double_vote', 'name': '🗳️ Double Vote', 'description': 'Vote counts twice (1 use)', 'price': 200, 'type': 'ability'},
+    {'id': 'ability_immunity', 'name': '🛡️ Immunity Shield', 'description': 'Survive one night attack (1 use)', 'price': 300, 'type': 'ability'},
+    {'id': 'emote_pack_1', 'name': '😎 Emote Pack 1', 'description': 'Express yourself!', 'price': 150, 'type': 'cosmetic'},
+    {'id': 'role_reroll', 'name': '🎲 Role Reroll', 'description': 'Reroll role once per game', 'price': 400, 'type': 'ability'}
 ]
 
 # Achievements
@@ -139,45 +109,33 @@ ACHIEVEMENTS = [
 # Missions
 MISSION_TEMPLATES = {
     '5v5': [
-        {'id': 'identify_mafia', 'name': 'Find the Culprit', 'description': 'Correctly identify a Mafia member', 'reward_xp': 50, 'reward_coins': 25},
-        {'id': 'survive_night', 'name': 'Night Owl', 'description': 'Survive 3 nights in a row', 'reward_xp': 75, 'reward_coins': 35}
+        {'id': 'identify_mafia', 'name': 'Find the Culprit', 'description': 'Correctly identify a Mafia', 'reward_xp': 50, 'reward_coins': 25},
+        {'id': 'survive_night', 'name': 'Night Owl', 'description': 'Survive 3 nights', 'reward_xp': 75, 'reward_coins': 35}
     ],
     '1v1': [
-        {'id': 'quick_win', 'name': 'Speed Demon', 'description': 'Win in under 2 minutes', 'reward_xp': 100, 'reward_coins': 50}
+        {'id': 'quick_win', 'name': 'Speed Demon', 'description': 'Win in < 2 mins', 'reward_xp': 100, 'reward_coins': 50}
     ]
 }
 
 # Emojis and Animations
 EMOJIS = {
     'roles': {
-        'mafia': '🔪',
-        'detective': '🔍',
-        'doctor': '💉',
-        'villager': '👥',
-        'godfather': '🎩',
-        'vigilante': '🔫',
-        'jester': '🤡'
+        'mafia': '🔪', 'detective': '🔍', 'doctor': '💉', 'villager': '👥',
+        'godfather': '🎩', 'vigilante': '🔫', 'jester': '🤡'
     },
     'actions': {'kill': '☠️', 'investigate': '🔎', 'protect': '🛡️', 'vote': '🗳️'},
     'status': {'alive': '✅', 'dead': '💀', 'winner': '🏆', 'loser': '💔'},
     'phases': {'night': '🌙', 'day': '☀️', 'voting': '⚖️'}
 }
 
-# Animation frames for loading
+# Animation frames
 LOADING_FRAMES = ["⚡", "⚡⚡", "⚡⚡⚡", "⚡⚡⚡⚡", "✨"]
-
-# Enhanced animation sequences
 ANIMATION_SEQUENCES = {
-    'game_start': [
-        "🎬 <b>GAME STARTING</b> 🎬",
-        "🎭 <b>Shuffling roles...</b> 🎭",
-        "⚡ <b>Preparing battlefield...</b> ⚡",
-        "🔥 <b>LET THE GAME BEGIN!</b> 🔥"
-    ],
-    'night_phase': ["🌙 <b>Night falls...</b>", "🌑 <b>The town sleeps...</b>", "👻 <b>But evil lurks in shadows...</b>"],
-    'day_phase': ["☀️ <b>Morning breaks...</b>", "🌅 <b>The town awakens...</b>", "👥 <b>Time to discuss and vote!</b>"],
-    'elimination': ["⚡ <b>Processing actions...</b>", "🎭 <b>The night reveals its secrets...</b>", "💀 <b>Someone has fallen!</b>"],
-    'victory': ["🎆 <b>GAME OVER!</b>", "🏆 <b>VICTORY!</b>", "🎉 <b>CONGRATULATIONS!</b>"]
+    'game_start': ["🎬 GAME STARTING", "🎭 Shuffling roles...", "⚡ Preparing...", "🔥 LET THE GAME BEGIN!"],
+    'night_phase': ["🌙 Night falls...", "🌑 The town sleeps...", "👻 Evil lurks..."],
+    'day_phase': ["☀️ Morning breaks...", "🌅 The town awakens...", "👥 Time to vote!"],
+    'elimination': ["⚡ Processing...", "🎭 Secrets revealed...", "💀 Someone has fallen!"],
+    'victory': ["🎆 GAME OVER!", "🏆 VICTORY!", "🎉 CONGRATULATIONS!"]
 }
 
 # Database settings
