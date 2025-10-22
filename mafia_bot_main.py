@@ -235,21 +235,16 @@ async def show_profile(query, context):
     await safe_edit_message(query, text, keyboard)
 
 async def show_leaderboard(query, context):
-    top = player_manager.get_leaderboard(10)
-    text = "🏆 TOP PLAYERS 🏆\n\n"
-    if not top:
-        text += "None yet!"
-    else:
-        text += "\n".join(format_leaderboard_entry(i, p) for i, p in enumerate(top, 1))
+    top = player_manager.get_leaderboard(10); text = "🏆 TOP PLAYERS 🏆\n\n"
+    if not top: text += "None yet!"
+    else: text += "\n".join(format_leaderboard_entry(i, p) for i, p in enumerate(top, 1))
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data='menu_main')]])
     await safe_edit_message(query, text, keyboard)
 
 async def claim_daily_reward(query, context):
     success, reward = player_manager.claim_daily_reward(query.from_user.id)
-    if success:
-        text = f"🎉 DAILY! 🎉\n💎{reward['xp']} XP\n🪙{reward['coins']} Coins\n🔥Streak: {reward['streak']}"
-    else:
-        text = "⏰ Claimed!"
+    if success: text = f"🎉 DAILY! 🎉\n💎{reward['xp']} XP\n🪙{reward['coins']} Coins\n🔥Streak: {reward['streak']}"
+    else: text = "⏰ Claimed!"
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data='menu_main')]])
     await safe_edit_message(query, text, keyboard)
 
@@ -298,19 +293,23 @@ async def join_game_action(query, context, game_id: str, user_id: int, username:
         
         # This will show the correct buttons for the person who clicked "Join"
         keyboard = create_lobby_keyboard(game_id, viewer_user_id=user_id)
-        await safe_edit_message(query, text, keyboard)
         
-        # Attempt to update for the creator as well
-        if game['creator_id'] != user_id:
-             try:
-                 # We need a way to find the original message to edit it for the creator.
-                 # This is complex. A simpler solution is to just let the message be updated for everyone.
-                 creator_keyboard = create_lobby_keyboard(game_id, viewer_user_id=game['creator_id'])
-                 await query.edit_message_reply_markup(reply_markup=creator_keyboard)
-             except Exception as e:
-                 logger.error(f"Could not update creator's lobby view dynamically: {e}")
+        # We must edit the message for this to work in groups.
+        # This will update the keyboard for everyone.
+        try:
+            # When lobby is full, get creator's keyboard (which has Start button)
+            if len(game['players']) >= req:
+                keyboard = create_lobby_keyboard(game_id, viewer_user_id=game['creator_id'])
+            await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+        except BadRequest as e:
+             if "message is not modified" not in str(e).lower():
+                 logger.error(f"Error updating lobby message: {e}")
+        except Exception as e:
+             logger.error(f"Error updating lobby message: {e}")
+             
     else:
         await query.answer(f"❌ {msg}", True)
+
 
 async def start_game_action(query, context, game_id: str, user_id: int):
     success, msg = game_manager.start_game(game_id, user_id)
@@ -327,8 +326,14 @@ async def start_game_action(query, context, game_id: str, user_id: int):
 
 async def cancel_game_action(query, context, game_id: str, user_id: int):
     success, msg = game_manager.cancel_game(game_id, user_id)
-    if success: await query.answer("✅ Cancelled!"); await show_main_menu_callback(query, context)
-    else: await query.answer(f"❌ {msg}", True)
+    if success:
+        await query.answer("✅ Cancelled!")
+        # Go back to the *text* message, not the photo
+        await query.edit_message_text(f"🚬 Welcome back, {query.from_user.first_name}.\n\nWhat's the move?",
+                                      reply_markup=create_main_menu_keyboard(is_private=True),
+                                      parse_mode='HTML')
+    else:
+        await query.answer(f"❌ {msg}", True)
 
 # --- SHOP ---
 async def handle_purchase(query, context, item_id, user_id):
@@ -372,8 +377,11 @@ async def send_target_practice_round(query, context):
     target_str = f"{get_role_emoji(target_name.lower())} {target_name}"
     state['current_target'] = target_name
     state['round'] = round_num + 1
-    text = f"<b>SCORE:{score}</b> | R:{state['round']}/7\n{target_str}\nSHOOT?"
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💥 SHOOT", callback_data="shoot_Shoot"), InlineKeyboardButton("✋ HOLD", callback_data="shoot_Hold")]])
+    text = f"<b>SCORE:{score}</b> | R:{state['round']}/7\n\n{target_str}\n\nSHOOT?"
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("💥", callback_data="shoot_Shoot"),
+        InlineKeyboardButton("✋", callback_data="shoot_Hold")
+    ]])
     await safe_edit_message(query, text, keyboard)
 
 async def handle_target_practice(query, context, data):
@@ -488,7 +496,8 @@ async def handle_timed_disarm(query, context, data):
         user_id, clicks = query.from_user.id, state.get('clicks', 0)
         context.user_data.pop('mission_state', None)
         rewards = MISSION_REWARDS['timed_disarm']
-        xp, coin = rewards.get('xp', 0)+(clicks*2), rewards.get('coins', 0)+clicks
+        xp = rewards.get('xp', 0) + (clicks * 2)
+        coin = rewards.get('coins', 0) + clicks
         if xp > 0: player_manager.add_xp(user_id,xp)
         if coin > 0: player_manager.add_coins(user_id,coin)
         text = f"🎉 DISARMED! Clicks:<b>{clicks}</b>\n💎{xp} XP\n🪙{coin} Coins"
@@ -530,19 +539,30 @@ async def handle_mafia_heist(query, context, data):
 
 
 # --- TOURNAMENT/TRADE FUNCTIONS ---
-# ... (Placeholders remain unchanged)
-async def create_new_tournament(query, context): await query.answer("Coming soon!", True)
-async def list_tournaments(query, context): await safe_edit_message(query, "No tournaments open.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_tournament')]]))
-async def show_tournament_details(query, context, tournament_id): pass
-async def register_for_tournament(query, context, tournament_id): pass
-async def start_tournament_handler(query, context, tournament_id): pass
-async def show_tournament_brackets(query, context, tournament_id): pass
-async def start_create_trade(query, context): await safe_edit_message(query, "Trade creation coming soon.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_trade')]]))
-async def handle_trade_partner_input(update: Update, context: ContextTypes.DEFAULT_TYPE): pass
-async def handle_trade_offer_coins_input(update: Update, context: ContextTypes.DEFAULT_TYPE): pass
-async def list_active_trades(query, context): await query.answer("Coming soon!", True)
-async def accept_trade_offer(query, context, trade_id): pass
-async def cancel_trade_offer(query, context, trade_id): pass
+async def create_new_tournament(query, context):
+    await query.answer("Coming soon!", True)
+async def list_tournaments(query, context):
+    await safe_edit_message(query, "No tournaments open.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_tournament')]]))
+async def show_tournament_details(query, context, tournament_id):
+    await query.answer("Coming soon!", True)
+async def register_for_tournament(query, context, tournament_id):
+    await query.answer("Coming soon!", True)
+async def start_tournament_handler(query, context, tournament_id):
+    await query.answer("Coming soon!", True)
+async def show_tournament_brackets(query, context, tournament_id):
+    await query.answer("Coming soon!", True)
+async def start_create_trade(query, context):
+    await safe_edit_message(query, "Trade creation coming soon.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_trade')]]))
+async def handle_trade_partner_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Trade setup coming soon...")
+async def handle_trade_offer_coins_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Trade setup coming soon...")
+async def list_active_trades(query, context):
+    await query.answer("Coming soon!", True)
+async def accept_trade_offer(query, context, trade_id):
+    await query.answer("Coming soon!", True)
+async def cancel_trade_offer(query, context, trade_id):
+    await query.answer("Coming soon!", True)
 
 
 # --- ADMIN AND ERROR HANDLERS ---
@@ -557,11 +577,19 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS: return await update.message.reply_text("❌ Unauthorized.")
-    log_file = 'nohup.out'
-    if os.path.exists(log_file):
-        try: await context.bot.send_document(chat_id=user_id, document=InputFile(log_file, filename='bot_logs.txt'))
-        except Exception as e: await update.message.reply_text(f"❌ Failed: {e}")
-    else: await update.message.reply_text("❌ `nohup.out` not found.")
+    log_file = 'nohup.out' # Main log
+    activity_log = 'bot_activity.log' # New, more detailed log
+    
+    try:
+        if os.path.exists(log_file):
+            await context.bot.send_document(chat_id=user_id, document=InputFile(log_file, filename='nohup.out.txt'))
+        if os.path.exists(activity_log):
+             await context.bot.send_document(chat_id=user_id, document=InputFile(activity_log, filename='bot_activity.log.txt'))
+        else:
+            await update.message.reply_text("No log files found.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Failed: {e}")
+
 
 async def get_bot_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -608,4 +636,4 @@ def main():
 # --- FIX: Removed duplicate main() call ---
 if __name__ == '__main__':
     main()
-# ----------------------------------------
+# ----------------------------------------# ----------------------------------------
