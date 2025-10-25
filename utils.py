@@ -9,9 +9,6 @@ from config import EMOJIS, ANIMATION_SEQUENCES, BOT_USERNAME, SHOP_ITEMS
 
 logger = logging.getLogger(__name__)
 
-# --- FIX: REMOVED game_manager import ---
-# No longer importing game_manager here
-
 # --- INLINE KEYBOARD FUNCTIONS ---
 def create_main_menu_keyboard(is_private: bool = False) -> InlineKeyboardMarkup:
     keyboard = [
@@ -19,8 +16,6 @@ def create_main_menu_keyboard(is_private: bool = False) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🏆 Leaderboard", callback_data='menu_leaderboard'), InlineKeyboardButton("🎁 Daily Reward", callback_data='menu_daily')],
         [InlineKeyboardButton("🏪 Shop", callback_data='menu_shop'), InlineKeyboardButton("❓ Help", callback_data='menu_help')],
         [InlineKeyboardButton("⚔️ Tournaments", callback_data='menu_tournament'), InlineKeyboardButton("📈 Trading Post", callback_data='menu_trade')]
-        # Add Gang button if clans are enabled in config
-        #[InlineKeyboardButton("🛡️ My Gang", callback_data='menu_clan')]
     ]
     if is_private:
         keyboard.append([InlineKeyboardButton("➕ LET'S CREATE GANG ➕", url=f"https://t.me/{BOT_USERNAME}?startgroup=true")])
@@ -38,14 +33,16 @@ def create_play_menu_keyboard() -> InlineKeyboardMarkup:
 
 def create_shop_keyboard(player_items: list) -> InlineKeyboardMarkup:
     keyboard = []
-    player_item_ids = [item['id'] for item in player_items]
+    player_item_ids = [item.get('id') for item in player_items if item and item.get('id')] if player_items else []
     for item in SHOP_ITEMS:
-        if item['id'] not in player_item_ids:
-            btn_text = f"💰 Buy: {item['name']} ({item['price']})"
-            callback = f"buy_item_{item['id']}"
+        item_id = item.get('id')
+        if not item_id: continue
+        if item_id not in player_item_ids:
+            btn_text = f"💰 Buy: {item.get('name','?')} ({item.get('price',0)})"
+            callback = f"buy_item_{item_id}"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
         else:
-            keyboard.append([InlineKeyboardButton(f"✅ {item['name']} (Owned)", callback_data="none")])
+            keyboard.append([InlineKeyboardButton(f"✅ {item.get('name','?')} (Owned)", callback_data="none")])
     keyboard.append([InlineKeyboardButton("🔙 Back to Menu", callback_data='menu_main')])
     return InlineKeyboardMarkup(keyboard)
 
@@ -82,8 +79,9 @@ def create_voting_keyboard(players: list) -> ReplyKeyboardMarkup:
     keyboard = []
     row = []
     for player in players:
-        if player['alive']:
-            row.append(KeyboardButton(f"🗳️ Vote: {player['username']}"))
+        if player and player.get('alive'):
+            username = player.get('username', 'Unknown')
+            row.append(KeyboardButton(f"🗳️ Vote: {username}"))
             if len(row) == 2: keyboard.append(row); row = []
     if row: keyboard.append(row)
     keyboard.append([KeyboardButton("⏭️ Skip Vote")])
@@ -95,8 +93,9 @@ def create_player_action_keyboard(action: str, players: list) -> ReplyKeyboardMa
     emoji = action_emoji.get(action, '⚡')
     row = []
     for player in players:
-        if player['alive']:
-            row.append(KeyboardButton(f"{emoji} {player['username']}"))
+         if player and player.get('alive'):
+            username = player.get('username', 'Unknown')
+            row.append(KeyboardButton(f"{emoji} {username}"))
             if len(row) == 2: keyboard.append(row); row = []
     if row: keyboard.append(row)
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
@@ -105,13 +104,13 @@ def create_player_action_keyboard(action: str, players: list) -> ReplyKeyboardMa
 # --- FORMATTING AND ANIMATION FUNCTIONS ---
 def format_player_stats(player: dict) -> str:
     if not player: return "❌ Player not found!"
-    win_rate = (player['wins'] / player['games_played'] * 100) if player.get('games_played', 0) > 0 else 0
+    win_rate = (player.get('wins', 0) / player.get('games_played', 1)) * 100 if player.get('games_played', 0) > 0 else 0
     level = player.get('level', 1)
     rank = get_rank_title(level)
     next_level_xp = calculate_xp_for_level(level + 1)
     xp_progress = (player.get('xp', 0) / next_level_xp) * 100 if next_level_xp > 0 else 0
     progress_bar = create_progress_bar(xp_progress)
-    text = (f"👤 <b>{player['username']}</b>\n\n🎖️ Rank: <b>{rank}</b>\n⭐ Level: <b>{level}</b>\n"
+    text = (f"👤 <b>{player.get('username','Unknown')}</b>\n\n🎖️ Rank: <b>{rank}</b>\n⭐ Level: <b>{level}</b>\n"
             f"💎 XP: {player.get('xp', 0)}/{next_level_xp}\n{progress_bar}\n\n"
             f"🪙 Coins: <b>{player.get('coins', 0)}</b>\n🎮 Games Played: <b>{player.get('games_played', 0)}</b>\n"
             f"🏆 Wins: <b>{player.get('wins', 0)}</b>\n💔 Losses: <b>{player.get('losses', 0)}</b>\n📊 Win Rate: <b>{win_rate:.1f}%</b>\n")
@@ -139,7 +138,7 @@ async def send_animated_message(message, frames: list, delay: float = 1.0):
 
 def format_leaderboard_entry(rank: int, player: dict) -> str:
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}; rank_str = medals.get(rank, f"{rank}.")
-    return f"{rank_str} <b>{player['username']}</b>\n   Level {player.get('level', 1)} • {player.get('wins', 0)} wins • {player.get('xp', 0)} XP\n"
+    return f"{rank_str} <b>{player.get('username','Unknown')}</b>\n   Level {player.get('level', 1)} • {player.get('wins', 0)} wins • {player.get('xp', 0)} XP\n"
 
 def generate_game_id() -> str:
     import random, string
@@ -151,7 +150,7 @@ def get_role_emoji(role: str) -> str: return EMOJIS.get('roles', {}).get(role, '
 
 def format_night_summary(eliminated: dict, protected_info: dict, investigated: dict = None) -> str:
     text = "🌙 <b>NIGHT SUMMARY</b> 🌙\n\n"
-    if eliminated: text += f"☠️ {eliminated['username']} was eliminated! ({eliminated['role'].upper()})\n\n"
+    if eliminated: text += f"☠️ {eliminated.get('username','?')} was eliminated! ({eliminated.get('role','?').upper()})\n\n"
     elif protected_info.get('protected'): text += "🛡️ Someone was attacked, but saved!\n\n"
     else: text += "🌟 A peaceful night. No casualties.\n\n"
     return text
@@ -159,7 +158,7 @@ def format_night_summary(eliminated: dict, protected_info: dict, investigated: d
 def format_day_summary(eliminated: dict, vote_count: int) -> str:
     text = "☀️ <b>DAY SUMMARY</b> ☀️\n\n"
     if eliminated:
-        text = f"⚖️ The town voted!\n\n💀 {eliminated['username']} was eliminated! ({eliminated['role'].upper()})\nVotes: {vote_count}\n"
+        text = f"⚖️ The town voted!\n\n💀 {eliminated.get('username','?')} was eliminated! ({eliminated.get('role','?').upper()})\nVotes: {vote_count}\n"
     else: text += "🤝 No consensus. No one was eliminated.\n"
     return text
 
@@ -176,7 +175,7 @@ def format_vote_results(game: dict, vote_counts: dict) -> str:
     if not vote_counts: return text + "No votes cast!\n"
     sorted_votes = sorted(vote_counts.items(), key=lambda x: x[1], reverse=True)
     for user_id, votes in sorted_votes:
-        player_name = next((p['username'] for p in game['players'] if p['user_id'] == user_id), "Unknown")
+        player_name = next((p['username'] for p in game.get('players',[]) if p.get('user_id') == user_id), "Unknown")
         text += f"• {player_name}: {votes} vote(s)\n"
     return text
 
@@ -199,6 +198,6 @@ async def send_phase_transition(message, phase: str):
 async def send_victory_animation(message, winner: str, winners: list):
     frames = ANIMATION_SEQUENCES.get('victory', [])
     winner_text = f"🏆 <b>THE {winner.upper()} TEAM WINS!</b> 🏆\n\nVictorious:\n"
-    winner_text += "\n".join(f"• {p['username']} ({p.get('role', '??').upper()})" for p in winners)
+    winner_text += "\n".join(f"• {p.get('username','?')} ({p.get('role', '??').upper()})" for p in winners)
     frames.append(winner_text)
     await send_animated_message(message, frames, delay=1.5)
