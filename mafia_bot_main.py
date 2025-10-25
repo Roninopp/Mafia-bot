@@ -61,24 +61,30 @@ def create_lobby_keyboard(game_id: str, viewer_user_id: int) -> InlineKeyboardMa
     if not game:
         return InlineKeyboardMarkup([[InlineKeyboardButton("Error: Game not found", callback_data="none")]])
 
-    is_player_in_game = any(p['user_id'] == viewer_user_id for p in game['players'])
-    if game['status'] == 'waiting' and not is_player_in_game:
-        # Use get_required_players for max players check
-        max_players = game_manager.get_required_players(game['mode'])
-        if len(game['players']) < max_players:
+    is_player_in_game = any(p.get('user_id') == viewer_user_id for p in game.get('players', []))
+    game_status = game.get('status', 'unknown')
+
+    if game_status == 'waiting' and not is_player_in_game:
+        # Use get_required_players (which now uses max_players) for max players check
+        max_players = game_manager.get_required_players(game.get('mode',''))
+        if len(game.get('players', [])) < max_players:
              keyboard.append([InlineKeyboardButton("✅ Join Game", callback_data=f"join_game_{game_id}")])
 
-    is_creator = (viewer_user_id == game['creator_id'])
-    required_players = game_manager.get_required_players(game['mode']) # Use required players for start check
-    if is_creator and game['status'] == 'waiting' and len(game['players']) >= required_players:
+    is_creator = (viewer_user_id == game.get('creator_id'))
+    # Use get_required_players again for start check (as it's max_players for fixed modes)
+    required_players = game_manager.get_required_players(game.get('mode',''))
+    if is_creator and game_status == 'waiting' and len(game.get('players', [])) >= required_players:
         keyboard.append([InlineKeyboardButton("🚀 Start Game", callback_data=f"start_game_{game_id}")])
 
-    if is_creator and game['status'] == 'waiting':
+    if is_creator and game_status == 'waiting':
         keyboard.append([InlineKeyboardButton("❌ Cancel Game", callback_data=f"cancel_game_{game_id}")])
 
     # Add a back button if the viewer is not in the game and it's waiting
-    if not is_player_in_game and game['status'] == 'waiting':
+    if not is_player_in_game and game_status == 'waiting':
          keyboard.append([InlineKeyboardButton("🔙 Menu", callback_data="menu_main")])
+    # Optionally, add a leave button for players already in
+    # elif is_player_in_game and game_status == 'waiting' and not is_creator:
+    #     keyboard.append([InlineKeyboardButton("🚪 Leave Lobby", callback_data=f"leave_game_{game_id}")]) # Needs handler
 
     return InlineKeyboardMarkup(keyboard)
 # ---------------------------------------------------------
@@ -120,8 +126,8 @@ async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def shop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player = player_manager.get_player(update.effective_user.id)
     if not player: await update.message.reply_text("/start first."); return
-    text = f"🏪 SHOP | 💰 Coins: <b>{player['coins']}</b>"
-    keyboard = create_shop_keyboard(player.get('items', [])) # Use get with default
+    text = f"🏪 SHOP | 💰 Coins: <b>{player.get('coins', 0)}</b>" # Use .get
+    keyboard = create_shop_keyboard(player.get('items', [])) # Use .get
     await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
 
 async def profile_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -137,16 +143,17 @@ async def leaderboard_command_handler(update: Update, context: ContextTypes.DEFA
 
 async def daily_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     success, reward = player_manager.claim_daily_reward(update.effective_user.id)
+    text = ""
     if success and reward: text = f"🎉 DAILY REWARD! 🎉\n💎{reward.get('xp',0)} XP\n🪙{reward.get('coins',0)} Coins\n🔥Streak: {reward.get('streak',0)}"
     else: text = "⏰ Already Claimed!"
     await update.message.reply_text(text, parse_mode='HTML')
 
 async def tournament_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not FEATURES['tournaments_enabled']: await update.message.reply_text("Tournaments off."); return
+    if not FEATURES.get('tournaments_enabled'): await update.message.reply_text("Tournaments off."); return
     await update.message.reply_text("🏆 TOURNAMENTS 🏆", reply_markup=create_tournament_menu_keyboard())
 
 async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not FEATURES['trading_enabled']: await update.message.reply_text("Trading off."); return
+    if not FEATURES.get('trading_enabled'): await update.message.reply_text("Trading off."); return
     await update.message.reply_text("📈 TRADING POST 📈", reply_markup=create_trade_menu_keyboard())
 
 async def help_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -161,9 +168,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text: return # Ignore empty updates
     text, user_id = update.message.text, update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
-    player_manager.register_player(user_id, username)
-    if context.user_data.get('state') == 'awaiting_trade_partner': await handle_trade_partner_input(update, context); return
-    if context.user_data.get('state') == 'awaiting_trade_offer_coins': await handle_trade_offer_coins_input(update, context); return
+    player_manager.register_player(user_id, username) # Ensure player exists
+    state = context.user_data.get('state')
+    if state == 'awaiting_trade_partner': await handle_trade_partner_input(update, context); return
+    if state == 'awaiting_trade_offer_coins': await handle_trade_offer_coins_input(update, context); return
+    # Add other trade states here if implemented fully
     if any(e in text for e in ['🔪','🔍','💉']): await game_manager.handle_action(update, context); return
     if any(e in text for e in ['🗳️','Vote:','⏭️']): await game_manager.handle_vote(update, context); return
     if update.effective_chat.type == 'private': await update.message.reply_text("Use commands or buttons.")
@@ -182,7 +191,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     username = query.from_user.username or query.from_user.first_name
     logger.info(f"Callback: data='{data}', user={user_id}")
 
-    # Clear mission/trade state if not relevant action
+    # Clear mission/trade state if not a relevant action
     if not data.startswith(('mission_','shoot_','case_','dilemma_','disarm_','heist_','trade_','tourn_')):
         context.user_data.pop('mission_state', None)
         context.user_data.pop('trade_setup', None)
@@ -238,6 +247,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception as alert_e:
             logger.error(f"Failed to send error alert to user {user_id}: {alert_e}")
 
+
 # --- MENU DISPLAY FUNCTIONS ---
 async def safe_edit_message(query, text, keyboard):
     if not query or not query.message: logger.warning("safe_edit: invalid query."); return
@@ -250,7 +260,9 @@ async def start_new_menu_from_game(query, context):
     """Handles the 'Main Menu' button pressed after a game ends."""
     await query.message.delete()
     # Call start using the message object from the query to send a new menu
-    await start(query.message, context)
+    # Need to simulate an Update object for the start function
+    fake_update = Update(update_id=0, message=query.message) # Create a simple Update
+    await start(fake_update, context)
 
 async def show_main_menu_callback(query, context):
     user = query.from_user; text = f"🚬 Welcome back, {user.first_name}.\n\nWhat's the move?"
@@ -297,11 +309,11 @@ async def show_help_callback(query, context):
     await safe_edit_message(query, text, keyboard)
 
 async def show_tournament_menu(query, context):
-    if not FEATURES['tournaments_enabled']: await query.answer("Off.", True); return
+    if not FEATURES.get('tournaments_enabled'): await query.answer("Off.", True); return
     await safe_edit_message(query, "🏆 TOURNAMENTS 🏆", create_tournament_menu_keyboard())
 
 async def show_trade_menu(query, context):
-    if not FEATURES['trading_enabled']: await query.answer("Off.", True); return
+    if not FEATURES.get('trading_enabled'): await query.answer("Off.", True); return
     await safe_edit_message(query, "📈 TRADING POST 📈", create_trade_menu_keyboard())
 
 # --- LOBBY/GAME ---
@@ -321,20 +333,31 @@ async def join_game_action(query, context, game_id: str, user_id: int, username:
     if success:
         await query.answer("✅ Joined!")
         game = game_manager.get_game(game_id)
-        req = game_manager.get_required_players(game['mode'])
-        text = f"🎮 LOBBY <code>{game_id}</code> | <b>{game['mode'].upper()}</b>\n👥 {len(game['players'])}/{req}\n\nPlayers:\n"
-        text += "\n".join(f"{'👑' if p['user_id']==game['creator_id'] else '•'} {p['username']}" for p in game['players'])
-        if len(game['players']) >= req: text += "\n🎉 Full! Ready to start!"
-        
+        # Check if game object exists before proceeding
+        if not game:
+             logger.error(f"Game {game_id} not found after join!")
+             await query.edit_message_text("Error: Lobby disappeared.")
+             return
+
+        req = game_manager.get_required_players(game.get('mode',''))
+        players = game.get('players', [])
+        creator_id = game.get('creator_id')
+
+        text = f"🎮 LOBBY <code>{game_id}</code> | <b>{game.get('mode','?').upper()}</b>\n👥 {len(players)}/{req}\n\nPlayers:\n"
+        text += "\n".join(f"{'👑' if p.get('user_id')==creator_id else '•'} {p.get('username','?')}" for p in players)
+        if len(players) >= req: text += "\n🎉 Full! Ready to start!"
+
         # Update keyboard based on creator's view to show Start button when ready
-        keyboard = create_lobby_keyboard(game_id, viewer_user_id=game['creator_id'])
-        
+        keyboard = create_lobby_keyboard(game_id, viewer_user_id=creator_id)
+
         try:
             await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
         except BadRequest as e:
-             if "message is not modified" not in str(e).lower(): logger.error(f"Error updating lobby: {e}")
-        except Exception as e: logger.error(f"Error updating lobby: {e}")
-             
+             if "message is not modified" not in str(e).lower():
+                 logger.error(f"Error updating lobby message: {e}")
+        except Exception as e:
+             logger.error(f"Error updating lobby message: {e}")
+
     else:
         await query.answer(f"❌ {msg}", True)
 
@@ -343,10 +366,10 @@ async def start_game_action(query, context, game_id: str, user_id: int):
     if not success: await query.answer(f"❌ {msg}", True); return
     await query.answer("🚀 Starting!")
     game = game_manager.get_game(game_id)
-    await send_animated_message(query.message, ANIMATION_SEQUENCES['game_start'], 1.5)
-    for p in game['players']:
-        desc = game_manager.get_role_description(p['role'])
-        await send_role_reveal_animation(context, p['user_id'], p['role'], desc)
+    await send_animated_message(query.message, ANIMATION_SEQUENCES.get('game_start', []), 1.5)
+    for p in game.get('players', []):
+        desc = game_manager.get_role_description(p.get('role',''))
+        await send_role_reveal_animation(context, p.get('user_id'), p.get('role',''), desc)
     await query.edit_message_text("🎮 Game Started! Check PMs!", reply_markup=None, parse_mode='HTML')
     await asyncio.sleep(2); await game_manager.start_round(game_id, query.message, context)
 
@@ -354,10 +377,17 @@ async def cancel_game_action(query, context, game_id: str, user_id: int):
     success, msg = game_manager.cancel_game(game_id, user_id)
     if success:
         await query.answer("✅ Cancelled!")
-        # Go back to the text message, not the photo
-        await query.edit_message_text(f"🚬 Welcome back, {query.from_user.first_name}.\n\nWhat's the move?",
+        # Attempt to edit back to main menu text
+        try:
+             await query.edit_message_text(f"🚬 Welcome back, {query.from_user.first_name}.\n\nWhat's the move?",
                                       reply_markup=create_main_menu_keyboard(is_private=True),
                                       parse_mode='HTML')
+        except Exception as e:
+             logger.warning(f"Failed to edit message after cancel: {e}")
+             # Fallback: Send a new menu message
+             await query.message.reply_text(f"🚬 Welcome back, {query.from_user.first_name}.\n\nWhat's the move?",
+                                             reply_markup=create_main_menu_keyboard(is_private=True),
+                                             parse_mode='HTML')
     else:
         await query.answer(f"❌ {msg}", True)
 
@@ -367,14 +397,14 @@ async def handle_purchase(query, context, item_id, user_id):
     item = next((i for i in SHOP_ITEMS if i['id'] == item_id), None)
     if not item: await query.answer("❌ Not found!", True); return
     if player_manager.has_item(user_id, item_id): await query.answer("✅ Owned!", True); return
-    if player['coins'] < item['price']: await query.answer(f"❌ Need {item['price']} coins.", True); return
-    if player_manager.spend_coins(user_id, item['price']):
+    if player.get('coins', 0) < item.get('price', 999999): await query.answer(f"❌ Need {item.get('price', '?')} coins.", True); return
+    if player_manager.spend_coins(user_id, item.get('price', 999999)):
         player_manager.add_item(user_id, item)
-        await query.answer(f"🎉 Bought: {item['name']}", True); await show_shop(query, context)
+        await query.answer(f"🎉 Bought: {item.get('name','?')}", True); await show_shop(query, context)
     else: await query.answer("❌ Failed!", True)
 
 
-# --- MISSIONS (Corrected Syntax) ---
+# --- MISSIONS (Corrected Syntax & Logic) ---
 async def show_missions_menu(query, context):
     text = "🚀 SINGLE-PLAYER MISSIONS 🚀\n\nChoose challenge:"
     keyboard = create_missions_menu_keyboard()
@@ -391,8 +421,10 @@ async def send_target_practice_round(query, context):
     if not state: logger.warning("Target practice state missing!"); return
     score, round_num = state.get('score', 0), state.get('round', 0)
     if round_num >= 7: await end_target_practice(query, context); return
+
     target_name = random.choice(['Villager','Villager','Mafia','Doctor'])
     target_str = f"{get_role_emoji(target_name.lower())} {target_name}"
+
     state['current_target'] = target_name
     state['round'] = round_num + 1
     text = f"<b>SCORE:{score}</b> | R:{state['round']}/7\n\n{target_str}\n\nSHOOT?"
@@ -427,7 +459,7 @@ async def end_target_practice(query, context):
     if not state: return
     user_id = query.from_user.id
     score = state.get('score', 0)
-    rewards = MISSION_REWARDS['target_practice']
+    rewards = MISSION_REWARDS.get('target_practice', {'xp':0, 'coins':0})
     xp = rewards.get('xp', 0) + (score // 10)
     coin = rewards.get('coins', 0) + (score // 5)
     if xp > 0: player_manager.add_xp(user_id, xp)
@@ -443,7 +475,8 @@ async def start_detectives_case(query, context):
     sequence = [get_role_emoji(random.choice(roles)) for _ in range(4)]
     seq_str = " ".join(sequence)
     context.user_data['mission_state'] = {'correct_answer': seq_str}
-    await query.edit_message_text(f"Memorize:\n<b>{seq_str}</b>\n(5s!)", parse_mode='HTML')
+    # Use edit_message_text on the query object
+    await query.message.edit_text(f"Memorize:\n<b>{seq_str}</b>\n(5s!)", parse_mode='HTML')
     await asyncio.sleep(5)
     options = [seq_str]
     for _ in range(3):
@@ -461,10 +494,12 @@ async def handle_detectives_case(query, context, data):
     correct, options = state.get('correct_answer'), state.get('options')
     try: chosen = options[int(data.split('_')[-1])]
     except: await safe_edit_message(query, "Invalid.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])); return
-    rewards, user_id = MISSION_REWARDS['detectives_case'], query.from_user.id
+    rewards, user_id = MISSION_REWARDS.get('detectives_case', {'xp':0,'coins':0}), query.from_user.id
     if chosen == correct:
-        player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0))
-        text = f"✅ Solved!\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins"
+        xp = rewards.get('xp',0); coin = rewards.get('coins',0)
+        if xp > 0: player_manager.add_xp(user_id,xp)
+        if coin > 0: player_manager.add_coins(user_id,coin)
+        text = f"✅ Solved!\n💎{xp} XP\n🪙{coin} Coins"
     else: text = f"❌ Wrong!\nCorrect:\n{correct}"
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_missions')]])
     await safe_edit_message(query, text, keyboard)
@@ -480,10 +515,12 @@ async def start_doctors_dilemma(query, context):
 async def handle_doctors_dilemma(query, context, data):
     state = context.user_data.pop('mission_state', None)
     if not state: await safe_edit_message(query, "Expired.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])); return
-    correct, user_id, rewards = state.get('correct_answer'), query.from_user.id, MISSION_REWARDS['doctors_dilemma']
+    correct, user_id, rewards = state.get('correct_answer'), query.from_user.id, MISSION_REWARDS.get('doctors_dilemma',{'xp':0,'coins':0})
     if data == correct:
-        player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0))
-        text = f"✅ Correct!\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins"
+        xp = rewards.get('xp',0); coin = rewards.get('coins',0)
+        if xp > 0: player_manager.add_xp(user_id,xp)
+        if coin > 0: player_manager.add_coins(user_id,coin)
+        text = f"✅ Correct!\n💎{xp} XP\n🪙{coin} Coins"
     else: text = "❌ Wrong!"
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='menu_missions')]])
     await safe_edit_message(query, text, keyboard)
@@ -497,12 +534,12 @@ async def start_timed_disarm(query, context):
 async def handle_timed_disarm(query, context, data):
     state = context.user_data.get('mission_state')
     if not state: await query.answer(); return
-    time_left = state['end_time'] - asyncio.get_event_loop().time()
+    time_left = state.get('end_time', 0) - asyncio.get_event_loop().time()
     if time_left <= 0:
         await query.answer("Time!")
         user_id, clicks = query.from_user.id, state.get('clicks', 0)
         context.user_data.pop('mission_state', None)
-        rewards = MISSION_REWARDS['timed_disarm']
+        rewards = MISSION_REWARDS.get('timed_disarm', {'xp':0,'coins':0})
         xp = rewards.get('xp', 0) + (clicks * 2)
         coin = rewards.get('coins', 0) + clicks
         if xp > 0: player_manager.add_xp(user_id,xp)
@@ -531,16 +568,20 @@ async def handle_mafia_heist(query, context, data):
         await safe_edit_message(query, text, InlineKeyboardMarkup(buttons))
     elif data == 'heist_hack':
         text = "In! Loot! ...Click. Gun. Boss! Set up!"
-        rewards = MISSION_REWARDS['mafia_heist_fail']
-        player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0))
-        end_text = f"{text}\n💔 FAILED\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins"
+        rewards = MISSION_REWARDS.get('mafia_heist_fail', {'xp':0,'coins':0})
+        xp, coin = rewards.get('xp',0), rewards.get('coins',0)
+        if xp > 0: player_manager.add_xp(user_id,xp)
+        if coin > 0: player_manager.add_coins(user_id,coin)
+        end_text = f"{text}\n💔 FAILED\n💎{xp} XP\n🪙{coin} Coins"
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])
         await safe_edit_message(query, end_text, keyboard)
     elif data == 'heist_drill':
         text = "Loud! Open! Loot! Alarms! Escape!"
-        rewards = MISSION_REWARDS['mafia_heist_success']
-        player_manager.add_xp(user_id,rewards.get('xp',0)); player_manager.add_coins(user_id,rewards.get('coins',0))
-        end_text = f"{text}\n🎉 SUCCESS!\n💎{rewards.get('xp',0)} XP\n🪙{rewards.get('coins',0)} Coins"
+        rewards = MISSION_REWARDS.get('mafia_heist_success', {'xp':0,'coins':0})
+        xp, coin = rewards.get('xp',0), rewards.get('coins',0)
+        if xp > 0: player_manager.add_xp(user_id,xp)
+        if coin > 0: player_manager.add_coins(user_id,coin)
+        end_text = f"{text}\n🎉 SUCCESS!\n💎{xp} XP\n🪙{coin} Coins"
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]])
         await safe_edit_message(query, end_text, keyboard)
 
@@ -565,7 +606,16 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log Errors and notify user."""
     logger.error(msg="Exception while handling an update:", exc_info=context.error)
     try:
-        if update and update.callback_query: await update.callback_query.answer("⚠️ Error occurred!", show_alert=True)
+        # Only send alert for callback query errors
+        if update and update.callback_query:
+            await update.callback_query.answer("⚠️ Error occurred!", show_alert=True)
+        # Optionally send full traceback to admin
+        # if context.error:
+        #     admin_id = ADMIN_IDS[0] if ADMIN_IDS else None
+        #     if admin_id:
+        #         # Format traceback
+        #         # await context.bot.send_message(admin_id, formatted_traceback)
+        #         pass
     except Exception as e:
         logger.error(f"Exception in error handler itself: {e}")
 
@@ -577,7 +627,9 @@ async def get_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for log_file in log_files:
         if os.path.exists(log_file):
             try:
-                await context.bot.send_document(chat_id=user_id, document=InputFile(log_file, filename=f"{log_file}.txt"))
+                # Use open with 'rb' for binary read, required by InputFile
+                with open(log_file, 'rb') as f:
+                     await context.bot.send_document(chat_id=user_id, document=f, filename=f"{log_file}.txt")
                 sent_any = True
             except Exception as e: await update.message.reply_text(f"❌ Failed to send {log_file}: {e}")
     if not sent_any: await update.message.reply_text("❌ No log files found.")
@@ -587,7 +639,7 @@ async def get_bot_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS: return await update.message.reply_text("❌ Unauthorized.")
     total_users = len(player_manager.players)
-    active_games = sum(1 for g in game_manager.games.values() if g['status'] == 'in_progress')
+    active_games = sum(1 for g in game_manager.games.values() if g.get('status') == 'in_progress')
     text = (f"📊 <b>STATS</b> 📊\n👥 Users: {total_users}\n🎮 Active Games: {active_games}")
     await update.message.reply_text(text, parse_mode='HTML')
 
@@ -617,8 +669,9 @@ def main():
     # Message Handler
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Error Handler - Corrected Method
+    # --- FIX: Use the correct method to add the error handler ---
     application.add_error_handler(error_handler)
+    # -----------------------------------------------------------
 
     logger.info("🎭 Mafia RPG Bot is starting (Inline Mode)...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
