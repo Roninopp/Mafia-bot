@@ -126,4 +126,4 @@ RANDOM_EVENTS = [
     {'id': 'full_moon', 'name': '🌕 Full Moon', 'description': 'Mafia power increased!', 'effect': 'mafia_boost', 'probability': 0.1},
     {'id': 'blackout', 'name': '⚡ Blackout', 'description': 'Detective investigation fails!', 'effect': 'detective_fail', 'probability': 0.05},
     {'id': 'guardian_angel', 'name': '👼 Guardian Angel', 'description': 'Random player protected!', 'effect': 'random_protect', 'probability': 0.08}
-]]
+]
