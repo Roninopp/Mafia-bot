@@ -18,12 +18,12 @@ from telegram.ext import (
     CallbackQueryHandler
 )
 # --- Import from our files ---
-# We need game_manager instance here for create_lobby_keyboard
+# Import the global game_manager instance correctly
 from game_manager import GameManager, game_manager
 from player_manager import PlayerManager
 from enhanced_features import tournament_system, trading_system
 from config import BOT_TOKEN, FEATURES, SHOP_ITEMS, ADMIN_IDS, MISSION_REWARDS, ANIMATION_SEQUENCES, BOT_USERNAME, MAFIA_PIC_URL
-# Import utils functions specifically
+# --- FIX: Import only necessary utils ---
 from utils import (
     create_main_menu_keyboard, create_play_menu_keyboard,
     format_player_stats, format_leaderboard_entry,
@@ -38,7 +38,13 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+# Add File Handler for persistent logging
+log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+log_handler = logging.FileHandler('bot_activity.log') # Use a separate file for activity
+log_handler.setFormatter(log_formatter)
 logger = logging.getLogger(__name__)
+logger.addHandler(log_handler)
+logger.setLevel(logging.INFO)
 
 # Global managers
 # game_manager is imported from game_manager.py
@@ -49,25 +55,23 @@ player_manager = PlayerManager()
 def create_lobby_keyboard(game_id: str, viewer_user_id: int) -> InlineKeyboardMarkup:
     """Create game lobby inline keyboard"""
     keyboard = []
+    # game_manager is globally available now
     game = game_manager.get_game(game_id)
 
     if not game:
         return InlineKeyboardMarkup([[InlineKeyboardButton("Error: Game not found", callback_data="none")]])
 
     is_player_in_game = any(p['user_id'] == viewer_user_id for p in game['players'])
-    # Button to join if lobby is waiting, viewer not in, and not full
     if game['status'] == 'waiting' and not is_player_in_game:
         max_players = game_manager.get_required_players(game['mode'])
         if len(game['players']) < max_players:
              keyboard.append([InlineKeyboardButton("✅ Join Game", callback_data=f"join_game_{game_id}")])
 
-    # Button to start if viewer is creator, lobby waiting, and enough players
     is_creator = (viewer_user_id == game['creator_id'])
-    required_players = game_manager.get_required_players(game['mode']) # Use required players for start check
+    required_players = game_manager.get_required_players(game['mode'])
     if is_creator and game['status'] == 'waiting' and len(game['players']) >= required_players:
         keyboard.append([InlineKeyboardButton("🚀 Start Game", callback_data=f"start_game_{game_id}")])
 
-    # Button to cancel if viewer is creator and lobby waiting
     if is_creator and game['status'] == 'waiting':
         keyboard.append([InlineKeyboardButton("❌ Cancel Game", callback_data=f"cancel_game_{game_id}")])
 
@@ -100,6 +104,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_photo(chat_id=chat.id, photo=MAFIA_PIC_URL)
         except Exception as e:
             logger.error(f"Failed start photo: {e}.")
+        # Send the menu as a new, separate message
         await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode='HTML', reply_markup=keyboard)
     else:
         welcome_text = (f"🎭 <b>MAFIA RPG</b> 🎭\n\n🔥 Welcome, {user.first_name}! Use /play to start.")
@@ -124,7 +129,7 @@ async def profile_command_handler(update: Update, context: ContextTypes.DEFAULT_
     await update.message.reply_text(format_player_stats(player), parse_mode='HTML')
 
 async def leaderboard_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    top = player_manager.get_leaderboard(10); text = "🏆 TROPPEST PLAYERS 🏆\n\n"
+    top = player_manager.get_leaderboard(10); text = "🏆 TOP PLAYERS 🏆\n\n"
     if not top: text += "None yet!"
     else: text += "\n".join(format_leaderboard_entry(i, p) for i, p in enumerate(top, 1))
     await update.message.reply_text(text, parse_mode='HTML')
@@ -308,17 +313,15 @@ async def join_game_action(query, context, game_id: str, user_id: int, username:
         text = f"🎮 LOBBY <code>{game_id}</code> | <b>{game['mode'].upper()}</b>\n👥 {len(game['players'])}/{req}\n\nPlayers:\n"
         text += "\n".join(f"{'👑' if p['user_id']==game['creator_id'] else '•'} {p['username']}" for p in game['players'])
         if len(game['players']) >= req: text += "\n🎉 Full! Ready to start!"
-
-        # Always update the keyboard based on the creator's view to show start button if ready
+        
+        # Update keyboard based on creator's view to show Start button when ready
         keyboard = create_lobby_keyboard(game_id, viewer_user_id=game['creator_id'])
         
         try:
             await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
         except BadRequest as e:
-             if "message is not modified" not in str(e).lower():
-                 logger.error(f"Error updating lobby message: {e}")
-        except Exception as e:
-             logger.error(f"Error updating lobby message: {e}")
+             if "message is not modified" not in str(e).lower(): logger.error(f"Error updating lobby: {e}")
+        except Exception as e: logger.error(f"Error updating lobby: {e}")
              
     else:
         await query.answer(f"❌ {msg}", True)
@@ -372,17 +375,11 @@ async def start_target_practice(query, context):
 
 async def send_target_practice_round(query, context):
     state = context.user_data.get('mission_state')
-    if not state:
-        logger.warning("Target practice state missing!")
-        return
+    if not state: logger.warning("Target practice state missing!"); return
     score, round_num = state.get('score', 0), state.get('round', 0)
-    if round_num >= 7:
-        await end_target_practice(query, context)
-        return
-
+    if round_num >= 7: await end_target_practice(query, context); return
     target_name = random.choice(['Villager','Villager','Mafia','Doctor'])
     target_str = f"{get_role_emoji(target_name.lower())} {target_name}"
-
     state['current_target'] = target_name
     state['round'] = round_num + 1
     text = f"<b>SCORE:{score}</b> | R:{state['round']}/7\n\n{target_str}\n\nSHOOT?"
@@ -397,27 +394,16 @@ async def handle_target_practice(query, context, data):
     if not state or 'current_target' not in state:
         await safe_edit_message(query, "Mission expired.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data='menu_missions')]]))
         return
-
     target = state.get('current_target')
     action = data.split('_')[-1]
     feedback = ""
     score = state.get('score', 0)
-
     if action == 'Shoot':
-        if target == 'Mafia':
-            score += 100
-            feedback = "💥 Hit!"
-        else:
-            score -= 75
-            feedback = "❌ Civilian!"
+        if target == 'Mafia': score += 100; feedback = "💥 Hit!"
+        else: score -= 75; feedback = "❌ Civilian!"
     elif action == 'Hold':
-        if target != 'Mafia':
-            score += 20
-            feedback = "✅ Good!"
-        else:
-            score -= 50
-            feedback = "❌ Missed!"
-
+        if target != 'Mafia': score += 20; feedback = "✅ Good!"
+        else: score -= 50; feedback = "❌ Missed!"
     state['score'] = score
     await safe_edit_message(query, f"<b>{feedback}</b>\nNext...", None)
     await asyncio.sleep(1.5)
@@ -472,7 +458,7 @@ async def handle_detectives_case(query, context, data):
 
 async def start_doctors_dilemma(query, context):
     puzzles = [{"q":"P A:\"Villager\", P B:\"A lies\". Mafia lies. Who?", "a":"dilemma_answer_A", "options":[("A","dilemma_answer_A"),("B","dilemma_answer_B")]},
-               {"q":"P1:Inn, P2:Inn. One is GF(lies). P1:\"Vill\", P2:\"One true\". Who GF?", "a":"dilemma_answer_B", "options":[("P1","dilemma_answer_A"),("P2","dilemma_answer_B")]}]
+               {"q":"P1:Inn, P2:Inn. One is GF(lies). P1:\"Villager\", P2:\"One true\". Who GF?", "a":"dilemma_answer_B", "options":[("P1","dilemma_answer_A"),("P2","dilemma_answer_B")]}]
     puzzle = random.choice(puzzles)
     context.user_data['mission_state'] = {'correct_answer': puzzle['a']}
     buttons = [[InlineKeyboardButton(t,cb) for t,cb in puzzle['options']]]
@@ -573,7 +559,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS: return await update.message.reply_text("❌ Unauthorized.")
-    log_files = ['nohup.out', 'bot_activity.log'] # Send both logs
+    log_files = ['nohup.out', 'bot_activity.log']
     sent_any = False
     for log_file in log_files:
         if os.path.exists(log_file):
@@ -618,15 +604,12 @@ def main():
     # Message Handler
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # --- FIX: Use the correct method to add the error handler ---
+    # Error Handler - Corrected Method
     application.add_error_handler(error_handler)
-    # -----------------------------------------------------------
 
     logger.info("🎭 Mafia RPG Bot is starting (Inline Mode)...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
-# --- FIX: Removed duplicate main() call ---
 if __name__ == '__main__':
     main()
-# ----------------------------------------
