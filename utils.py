@@ -19,6 +19,8 @@ def create_main_menu_keyboard(is_private: bool = False) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🏆 Leaderboard", callback_data='menu_leaderboard'), InlineKeyboardButton("🎁 Daily Reward", callback_data='menu_daily')],
         [InlineKeyboardButton("🏪 Shop", callback_data='menu_shop'), InlineKeyboardButton("❓ Help", callback_data='menu_help')],
         [InlineKeyboardButton("⚔️ Tournaments", callback_data='menu_tournament'), InlineKeyboardButton("📈 Trading Post", callback_data='menu_trade')]
+        # Add Gang button if clans are enabled in config
+        #[InlineKeyboardButton("🛡️ My Gang", callback_data='menu_clan')]
     ]
     if is_private:
         keyboard.append([InlineKeyboardButton("➕ LET'S CREATE GANG ➕", url=f"https://t.me/{BOT_USERNAME}?startgroup=true")])
@@ -47,7 +49,7 @@ def create_shop_keyboard(player_items: list) -> InlineKeyboardMarkup:
     keyboard.append([InlineKeyboardButton("🔙 Back to Menu", callback_data='menu_main')])
     return InlineKeyboardMarkup(keyboard)
 
-# --- FIX: REMOVED create_lobby_keyboard function ---
+# --- create_lobby_keyboard is now in mafia_bot_main.py ---
 
 def create_missions_menu_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
@@ -103,16 +105,16 @@ def create_player_action_keyboard(action: str, players: list) -> ReplyKeyboardMa
 # --- FORMATTING AND ANIMATION FUNCTIONS ---
 def format_player_stats(player: dict) -> str:
     if not player: return "❌ Player not found!"
-    win_rate = (player['wins'] / player['games_played'] * 100) if player['games_played'] > 0 else 0
+    win_rate = (player['wins'] / player['games_played'] * 100) if player.get('games_played', 0) > 0 else 0
     level = player.get('level', 1)
     rank = get_rank_title(level)
     next_level_xp = calculate_xp_for_level(level + 1)
-    xp_progress = (player['xp'] / next_level_xp) * 100 if next_level_xp > 0 else 0
+    xp_progress = (player.get('xp', 0) / next_level_xp) * 100 if next_level_xp > 0 else 0
     progress_bar = create_progress_bar(xp_progress)
     text = (f"👤 <b>{player['username']}</b>\n\n🎖️ Rank: <b>{rank}</b>\n⭐ Level: <b>{level}</b>\n"
-            f"💎 XP: {player['xp']}/{next_level_xp}\n{progress_bar}\n\n"
-            f"🪙 Coins: <b>{player['coins']}</b>\n🎮 Games Played: <b>{player['games_played']}</b>\n"
-            f"🏆 Wins: <b>{player['wins']}</b>\n💔 Losses: <b>{player['losses']}</b>\n📊 Win Rate: <b>{win_rate:.1f}%</b>\n")
+            f"💎 XP: {player.get('xp', 0)}/{next_level_xp}\n{progress_bar}\n\n"
+            f"🪙 Coins: <b>{player.get('coins', 0)}</b>\n🎮 Games Played: <b>{player.get('games_played', 0)}</b>\n"
+            f"🏆 Wins: <b>{player.get('wins', 0)}</b>\n💔 Losses: <b>{player.get('losses', 0)}</b>\n📊 Win Rate: <b>{win_rate:.1f}%</b>\n")
     if player.get('favorite_role'): text += f"🎭 Favorite Role: <b>{player['favorite_role'].upper()}</b>\n"
     if player.get('streak', 0) > 0: text += f"🔥 Daily Streak: <b>{player['streak']} days</b>\n"
     if player.get('achievements'): text += f"\n🏅 Achievements: <b>{len(player['achievements'])}</b>"
@@ -122,14 +124,16 @@ def create_progress_bar(percentage: float, length: int = 10) -> str:
     filled = int((percentage / 100) * length); empty = length - filled
     bar = "▰" * filled + "▱" * empty; return f"[{bar}] {percentage:.0f}%"
 
-def calculate_xp_for_level(level: int) -> int: return int(100 * (level ** 1.5))
+def calculate_xp_for_level(level: int) -> int:
+    if level <= 1: return 100 # XP needed for level 2
+    return int(100 * (level ** 1.5))
 
 async def send_animated_message(message, frames: list, delay: float = 1.0):
     sent_message = None
     try:
         for i, frame_text in enumerate(frames):
             if i == 0: sent_message = await message.reply_text(frame_text, parse_mode='HTML')
-            else: await asyncio.sleep(delay); await sent_message.edit_text(frame_text, parse_mode='HTML')
+            elif sent_message: await asyncio.sleep(delay); await sent_message.edit_text(frame_text, parse_mode='HTML')
         return sent_message
     except Exception as e: logger.warning(f"Animation failed: {e}"); return sent_message
 
@@ -143,7 +147,7 @@ def generate_game_id() -> str:
     random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
     return f"G-{random_str}{timestamp}"
 
-def get_role_emoji(role: str) -> str: return EMOJIS['roles'].get(role, '❓')
+def get_role_emoji(role: str) -> str: return EMOJIS.get('roles', {}).get(role, '❓')
 
 def format_night_summary(eliminated: dict, protected_info: dict, investigated: dict = None) -> str:
     text = "🌙 <b>NIGHT SUMMARY</b> 🌙\n\n"
@@ -189,12 +193,12 @@ async def send_elimination_animation(message, username: str, role: str):
     await send_animated_message(message, frames, delay=1.5)
 
 async def send_phase_transition(message, phase: str):
-    frames = ANIMATION_SEQUENCES['night_phase'] if phase == 'night' else ANIMATION_SEQUENCES['day_phase']
+    frames = ANIMATION_SEQUENCES.get('night_phase' if phase == 'night' else 'day_phase', [])
     await send_animated_message(message, frames, delay=1.2)
 
 async def send_victory_animation(message, winner: str, winners: list):
-    frames = ANIMATION_SEQUENCES['victory']
+    frames = ANIMATION_SEQUENCES.get('victory', [])
     winner_text = f"🏆 <b>THE {winner.upper()} TEAM WINS!</b> 🏆\n\nVictorious:\n"
-    winner_text += "\n".join(f"• {p['username']} ({p['role'].upper()})" for p in winners)
+    winner_text += "\n".join(f"• {p['username']} ({p.get('role', '??').upper()})" for p in winners)
     frames.append(winner_text)
     await send_animated_message(message, frames, delay=1.5)
