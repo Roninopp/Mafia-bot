@@ -10,7 +10,7 @@ load_dotenv()
 
 # Bot Token - Get from @BotFather on Telegram
 # !!! PASTE YOUR REAL TOKEN HERE !!!
-BOT_TOKEN = "8180268399:AAEfEsmFMvrCsgfxMb5Q0kbPqajrTJbpD38" 
+BOT_TOKEN = "8400754472:AAFzBj_SsUh7BAuIcBO27kHPxQ9W3KnFZpQ" 
 
 # --- NEW: Bot Username and Pic ---
 BOT_USERNAME = "Mafia_Gang_Game_Bot"
