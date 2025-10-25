@@ -1,61 +1,40 @@
 """
 Utility Functions for Mafia RPG Bot
 """
-
 import asyncio
 import logging
 from datetime import datetime, timedelta
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from config import EMOJIS, LOADING_FRAMES, ANIMATION_SEQUENCES, BOT_USERNAME, SHOP_ITEMS
+from config import EMOJIS, ANIMATION_SEQUENCES, BOT_USERNAME, SHOP_ITEMS
 
 logger = logging.getLogger(__name__)
 
-# --- FIX: REMOVED game_manager import to prevent circular dependency ---
-# from game_manager import GameManager, game_manager 
-# The create_lobby_keyboard function is now in mafia_bot_main.py
-# --------------------------------------------------------------------
+# --- FIX: REMOVED game_manager import ---
+# No longer importing game_manager here
 
 # --- INLINE KEYBOARD FUNCTIONS ---
-
 def create_main_menu_keyboard(is_private: bool = False) -> InlineKeyboardMarkup:
-    """Creates the main menu inline keyboard."""
     keyboard = [
-        [
-            InlineKeyboardButton("🎮 Play", callback_data='menu_play'),
-            InlineKeyboardButton("👤 My Profile", callback_data='menu_profile')
-        ],
-        [
-            InlineKeyboardButton("🏆 Leaderboard", callback_data='menu_leaderboard'),
-            InlineKeyboardButton("🎁 Daily Reward", callback_data='menu_daily')
-        ],
-        [
-            InlineKeyboardButton("🏪 Shop", callback_data='menu_shop'),
-            InlineKeyboardButton("❓ Help", callback_data='menu_help')
-        ],
-        [
-            InlineKeyboardButton("⚔️ Tournaments", callback_data='menu_tournament'),
-            InlineKeyboardButton("📈 Trading Post", callback_data='menu_trade')
-        ]
+        [InlineKeyboardButton("🎮 Play", callback_data='menu_play'), InlineKeyboardButton("👤 My Profile", callback_data='menu_profile')],
+        [InlineKeyboardButton("🏆 Leaderboard", callback_data='menu_leaderboard'), InlineKeyboardButton("🎁 Daily Reward", callback_data='menu_daily')],
+        [InlineKeyboardButton("🏪 Shop", callback_data='menu_shop'), InlineKeyboardButton("❓ Help", callback_data='menu_help')],
+        [InlineKeyboardButton("⚔️ Tournaments", callback_data='menu_tournament'), InlineKeyboardButton("📈 Trading Post", callback_data='menu_trade')]
     ]
     if is_private:
-        keyboard.append([
-            InlineKeyboardButton("➕ LET'S CREATE GANG ➕", url=f"https://t.me/{BOT_USERNAME}?startgroup=true")
-        ])
+        keyboard.append([InlineKeyboardButton("➕ LET'S CREATE GANG ➕", url=f"https://t.me/{BOT_USERNAME}?startgroup=true")])
     return InlineKeyboardMarkup(keyboard)
 
 def create_play_menu_keyboard() -> InlineKeyboardMarkup:
-    """Creates the game mode selection inline keyboard."""
     keyboard = [
         [InlineKeyboardButton("⚔️ 5v5 Classic", callback_data='mode_5v5')],
         [InlineKeyboardButton("🎯 1v1 Duel", callback_data='mode_1v1')],
-        [InlineKeyboardButton("🚀 New Missions!", callback_data='menu_missions')],
-        [InlineKeyboardButton("🌟 Events (Coming Soon)", callback_data="none")],
-        [InlineKeyboardButton("🔙 Back to Menu", callback_data='menu_main')]
+        [InlineKeyboardButton("🚀 Missions", callback_data='menu_missions')],
+        [InlineKeyboardButton("🌟 Events (Soon)", callback_data="none")],
+        [InlineKeyboardButton("🔙 Back", callback_data='menu_main')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def create_shop_keyboard(player_items: list) -> InlineKeyboardMarkup:
-    """Creates the inline shop keyboard."""
     keyboard = []
     player_item_ids = [item['id'] for item in player_items]
     for item in SHOP_ITEMS:
@@ -68,10 +47,9 @@ def create_shop_keyboard(player_items: list) -> InlineKeyboardMarkup:
     keyboard.append([InlineKeyboardButton("🔙 Back to Menu", callback_data='menu_main')])
     return InlineKeyboardMarkup(keyboard)
 
-# create_lobby_keyboard is now in mafia_bot_main.py
+# --- FIX: REMOVED create_lobby_keyboard function ---
 
 def create_missions_menu_keyboard() -> InlineKeyboardMarkup:
-    """Creates the missions menu inline keyboard."""
     keyboard = [
         [InlineKeyboardButton("🎯 Target Practice", callback_data='mission_target_practice')],
         [InlineKeyboardButton("🔍 Detective's Case", callback_data='mission_detectives_case')],
@@ -126,7 +104,7 @@ def create_player_action_keyboard(action: str, players: list) -> ReplyKeyboardMa
 def format_player_stats(player: dict) -> str:
     if not player: return "❌ Player not found!"
     win_rate = (player['wins'] / player['games_played'] * 100) if player['games_played'] > 0 else 0
-    level = player['level']
+    level = player.get('level', 1)
     rank = get_rank_title(level)
     next_level_xp = calculate_xp_for_level(level + 1)
     xp_progress = (player['xp'] / next_level_xp) * 100 if next_level_xp > 0 else 0
@@ -157,7 +135,7 @@ async def send_animated_message(message, frames: list, delay: float = 1.0):
 
 def format_leaderboard_entry(rank: int, player: dict) -> str:
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}; rank_str = medals.get(rank, f"{rank}.")
-    return f"{rank_str} <b>{player['username']}</b>\n   Level {player['level']} • {player['wins']} wins • {player['xp']} XP\n"
+    return f"{rank_str} <b>{player['username']}</b>\n   Level {player.get('level', 1)} • {player.get('wins', 0)} wins • {player.get('xp', 0)} XP\n"
 
 def generate_game_id() -> str:
     import random, string
