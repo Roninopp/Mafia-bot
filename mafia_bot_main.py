@@ -124,7 +124,7 @@ async def profile_command_handler(update: Update, context: ContextTypes.DEFAULT_
     await update.message.reply_text(format_player_stats(player), parse_mode='HTML')
 
 async def leaderboard_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    top = player_manager.get_leaderboard(10); text = "🏆 TOP PLAYERS 🏆\n\n"
+    top = player_manager.get_leaderboard(10); text = "🏆 TROPPEST PLAYERS 🏆\n\n"
     if not top: text += "None yet!"
     else: text += "\n".join(format_leaderboard_entry(i, p) for i, p in enumerate(top, 1))
     await update.message.reply_text(text, parse_mode='HTML')
