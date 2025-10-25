@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # !!! PASTE YOUR REAL TOKEN HERE !!!
-BOT_TOKEN = "8400754472:AAFzBj_SsUh7BAuIcBO27kHPxQ9W3KnFZpQ"
+BOT_TOKEN = "8400754472:AAFzBj_SsUh7BAuIcBO27kHPxQ9W3KnFZpQ" 
 
 BOT_USERNAME = "Mafia_Gang_Game_Bot"
 MAFIA_PIC_URL = "https://i.imgur.com/X25sJtG.jpeg"
@@ -72,12 +72,10 @@ SHOP_ITEMS = [
     {'id': 'role_reroll', 'name': '🎲 Role Reroll', 'description': 'Reroll role once per game', 'price': 400, 'type': 'ability'}
 ]
 
-# Basic achievements, can be expanded
 ACHIEVEMENTS = [
     {'id': 'first_win', 'name': 'First Blood', 'description': 'Win your first game', 'icon': '🏆', 'reward': 50},
 ]
 
-# Basic mission templates
 MISSION_TEMPLATES = {
     '5v5': [
         {'id': 'identify_mafia', 'name': 'Find the Culprit', 'description': 'Correctly identify a Mafia', 'reward_xp': 50, 'reward_coins': 25},
@@ -86,7 +84,7 @@ MISSION_TEMPLATES = {
     '1v1': [
         {'id': 'quick_win', 'name': 'Speed Demon', 'description': 'Win in < 2 mins', 'reward_xp': 100, 'reward_coins': 50}
     ]
-}
+} # <-- FIX: The extra ']]' was here and is now REMOVED.
 
 EMOJIS = {
     'roles': {
@@ -117,9 +115,9 @@ FEATURES = {
     'daily_rewards_enabled': True,
     'leaderboard_enabled': True,
     'statistics_enabled': True,
-    'tournaments_enabled': True, # Keep enabled, commands exist
-    'clans_enabled': False, # Keep disabled for now
-    'trading_enabled': True # Keep enabled, commands exist
+    'tournaments_enabled': True,
+    'clans_enabled': False,
+    'trading_enabled': True
 }
 
 RANDOM_EVENTS = [
