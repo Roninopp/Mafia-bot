@@ -13,7 +13,7 @@ class PlayerManager:
         self.data_file = data_file
         self.players: Dict[int, dict] = {}
         self.load_data()
-    
+
     def load_data(self):
         """Load player data from file"""
         if os.path.exists(self.data_file):
@@ -39,7 +39,7 @@ class PlayerManager:
                 self.players = {}
         else:
             self.players = {} # Initialize empty if file doesn't exist
-    
+
     def save_data(self):
         """Save player data to file"""
         try:
@@ -47,7 +47,7 @@ class PlayerManager:
                 json.dump(self.players, f, indent=2, default=str, ensure_ascii=False)
         except Exception as e:
             print(f"Error saving player data: {e}")
-    
+
     def register_player(self, user_id: int, username: str) -> dict:
         """Register a new player or return/update existing"""
         player = self.players.get(user_id)
@@ -78,11 +78,11 @@ class PlayerManager:
         player.setdefault('games_played', 0)
 
         return player
-    
+
     def get_player(self, user_id: int) -> Optional[dict]:
         """Get player data"""
         return self.players.get(user_id)
-    
+
     def get_player_by_username(self, username: str) -> Optional[dict]:
         """Find player by username (case-insensitive)"""
         if not username: return None
@@ -96,18 +96,18 @@ class PlayerManager:
         """Add XP to player and handle level ups"""
         player = self.get_player(user_id)
         if not player: return
-        
+
         player['xp'] = player.get('xp', 0) + amount
         leveled_up = False
-        
+
         while True:
             current_level = player.get('level', 1)
             xp_needed = self._calculate_xp_for_level(current_level + 1)
-            
+
             if xp_needed <= 0: # Avoid infinite loop if calc is wrong
                  print(f"Warning: Calculated 0 XP needed for level {current_level + 1}")
                  break
-                 
+
             if player['xp'] >= xp_needed:
                 player['level'] = current_level + 1
                 player['xp'] -= xp_needed
@@ -120,7 +120,7 @@ class PlayerManager:
         if leveled_up:
             self._check_level_achievements(user_id)
         self.save_data()
-    
+
     def _calculate_xp_for_level(self, level: int) -> int:
         """Calculate XP required FOR the next level (e.g., level 2 needs XP for level 2)"""
         if level <= 1: return 100 # Base XP for level 2
@@ -132,7 +132,7 @@ class PlayerManager:
         if player:
             player['coins'] = player.get('coins', 0) + amount
             self.save_data()
-    
+
     def spend_coins(self, user_id: int, amount: int) -> bool:
         player = self.get_player(user_id)
         if player and player.get('coins', 0) >= amount:
@@ -140,7 +140,7 @@ class PlayerManager:
             self.save_data()
             return True
         return False
-    
+
     def add_win(self, user_id: int):
         player = self.get_player(user_id)
         if player:
@@ -148,14 +148,14 @@ class PlayerManager:
             player['games_played'] = player.get('games_played', 0) + 1
             self._check_win_achievements(user_id)
             self.save_data()
-    
+
     def add_loss(self, user_id: int):
         player = self.get_player(user_id)
         if player:
             player['losses'] = player.get('losses', 0) + 1
             player['games_played'] = player.get('games_played', 0) + 1
             self.save_data()
-    
+
     def record_role_played(self, user_id: int, role: str):
         player = self.get_player(user_id)
         if player:
@@ -165,7 +165,7 @@ class PlayerManager:
             if player['roles_played']:
                 player['favorite_role'] = max(player['roles_played'].items(), key=lambda item: item[1])[0]
             self.save_data()
-    
+
     def add_achievement(self, user_id: int, achievement: dict):
         player = self.get_player(user_id)
         if player:
@@ -180,12 +180,11 @@ class PlayerManager:
                 print(f"Player {user_id} earned achievement: {achievement.get('name')}")
                 return True
         return False
-    
+
     # Example Achievement Checks (Can be moved to a separate AchievementManager)
     def _check_level_achievements(self, user_id: int):
-        player = self.get_player(user_id)
-        if not player: return
-        level = player.get('level', 1)
+        player = self.get_player(user_id);
+        if not player: return; level = player.get('level', 1)
         achievements_to_check = [
             {'id': 'level_5', 'name': 'Rising Star', 'description':'Reach Lv 5', 'level': 5, 'reward': 100, 'icon': '⭐'},
             {'id': 'level_10', 'name': 'Veteran', 'description':'Reach Lv 10', 'level': 10, 'reward': 200, 'icon': '🎖️'},
@@ -193,11 +192,10 @@ class PlayerManager:
         for ach in achievements_to_check:
             if level >= ach.get('level', 999): # Use get with high default
                 self.add_achievement(user_id, ach)
-    
+
     def _check_win_achievements(self, user_id: int):
-        player = self.get_player(user_id)
-        if not player: return
-        wins = player.get('wins', 0)
+        player = self.get_player(user_id);
+        if not player: return; wins = player.get('wins', 0)
         achievements_to_check = [
             {'id': 'first_win', 'name': 'First Blood','description':'Win 1st game', 'wins': 1, 'reward': 50, 'icon': '🏆'},
             {'id': 'win_10', 'name': 'Skilled', 'description':'Win 10 games','wins': 10, 'reward': 150, 'icon': '🎯'},
@@ -205,11 +203,11 @@ class PlayerManager:
         for ach in achievements_to_check:
              if wins >= ach.get('wins', 999999): # Use get with high default
                 self.add_achievement(user_id, ach)
-    
+
     def claim_daily_reward(self, user_id: int) -> tuple[bool, Optional[dict]]:
         player = self.get_player(user_id)
         if not player: return False, None
-        
+
         now = datetime.now()
         last_claim_iso = player.get('last_daily_claim')
         can_claim = False
@@ -235,7 +233,7 @@ class PlayerManager:
 
         if not can_claim:
             return False, None # Already claimed today
-            
+
         # Calculate reward
         streak = player.get('streak', 1)
         streak_multiplier = min(streak, 7) # Max 7 day streak bonus
@@ -243,16 +241,16 @@ class PlayerManager:
         base_coins = 25
         xp_reward = base_xp * streak_multiplier
         coin_reward = base_coins * streak_multiplier
-        
+
         # Update player data
         player['last_daily_claim'] = now.isoformat()
         self.add_xp(user_id, xp_reward)
         self.add_coins(user_id, coin_reward)
         self.save_data()
-        
+
         print(f"Player {user_id} claimed daily reward. Streak: {streak}")
         return True, {'xp': xp_reward, 'coins': coin_reward, 'streak': streak}
-    
+
     def get_leaderboard(self, limit: int = 10) -> List[dict]:
         """Get top players by level and XP"""
         # Ensure players have level and xp before sorting
@@ -263,7 +261,7 @@ class PlayerManager:
             reverse=True
         )
         return sorted_players[:limit]
-    
+
     def add_item(self, user_id: int, item_details: dict):
         """Add item to player inventory using item details from config"""
         player = self.get_player(user_id)
@@ -271,19 +269,19 @@ class PlayerManager:
             item_entry = {'id': item_details['id'], 'acquired_at': datetime.now().isoformat()}
             player.setdefault('items', [])
             # Avoid adding duplicates if needed, depending on item type
-            if not any(i['id'] == item_details['id'] for i in player['items']):
+            if not any(i.get('id') == item_details['id'] for i in player['items']):
                  player['items'].append(item_entry)
                  self.save_data()
                  print(f"Added item {item_details['id']} to player {user_id}")
-            
+
     def remove_item(self, user_id: int, item_id: str) -> bool:
         """Remove an item from player inventory by ID. Returns True if removed."""
         player = self.get_player(user_id)
         if not player or 'items' not in player: return False
-        
+
         initial_length = len(player['items'])
         player['items'] = [item for item in player['items'] if item.get('id') != item_id]
-        
+
         if len(player['items']) < initial_length:
             self.save_data()
             print(f"Removed item {item_id} from player {user_id}")
@@ -293,4 +291,5 @@ class PlayerManager:
     def has_item(self, user_id: int, item_id: str) -> bool:
         """Check if player has an item"""
         player = self.get_player(user_id)
+        # Use .get with default empty list for safety
         return player and any(item.get('id') == item_id for item in player.get('items', []))
